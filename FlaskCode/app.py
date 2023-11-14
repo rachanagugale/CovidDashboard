@@ -1,12 +1,21 @@
 import cx_Oracle
+import os
 from flask import Flask, jsonify, request
+from dotenv import load_dotenv
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
+
+load_dotenv()
+
+DB_USERNAME = os.getenv('DB_USERNAME')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
 
 # Database connection settings
 dsn = cx_Oracle.makedsn('oracle.cise.ufl.edu', '1521', service_name='orcl')
-db_username = '<Oracle Username>'
-db_password = '<Oracle Password>'
+db_username = DB_USERNAME
+db_password = DB_PASSWORD
 
 
 # Healthcare stocks vs hospitalizations - returns 34 records
