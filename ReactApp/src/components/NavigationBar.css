@@ -1,0 +1,25 @@
+nav {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  height: 5.5rem;
+  width: 100%;
+  padding: 2rem 4rem;
+  background-color: rgb(37, 37, 41);
+}
+
+.links {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+.links > a {
+  color: #FFF;
+  font-size: 1.35rem;
+  margin: 0 1rem;
+}
+.links > a:hover {
+  color: #FF6740;
+  transition: .3s ease-in-out;
+}
