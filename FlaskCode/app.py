@@ -18,11 +18,128 @@ db_username = DB_USERNAME
 db_password = DB_PASSWORD
 
 
+# Infected population percentage vs mobility
+@app.route('/query1', methods=['POST'])
+def query1():
+    data = request.json
+    input_state = data.get('state')
+    mobility_types = data.get('mobility_types', [])
+
+    connection = cx_Oracle.connect(db_username, db_password, dsn)
+    cursor = connection.cursor()
+    print("Request for q1 received")
+
+    query = """WITH WeeklyUSEpidemiology AS (
+        SELECT
+            TRUNC(date_key, 'IW') AS start_of_week,
+            CASE
+                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
+                ELSE location_key
+            END AS truncated_location,
+            SUM(cumulative_confirmed) AS TotalInfected
+        FROM
+            rgugale.US_Epidemiology
+        GROUP BY
+            TRUNC(date_key, 'IW'),
+            CASE
+                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
+                ELSE location_key
+            END
+    ),
+    WeeklyUSMobility AS (
+        SELECT
+            TRUNC(date_key, 'IW') AS start_of_week,
+            CASE
+                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
+                ELSE location_key
+            END AS truncated_location,
+            ROUND(AVG(mobility_retail_and_recreation), 4) AS AvgMobilityRetailAndRecreation,
+            ROUND(AVG(mobility_grocery_and_pharmacy), 4) AS AvgMobilityGroceryAndPharmacy,
+            ROUND(AVG(mobility_parks), 4) AS AvgMobilityParks,
+            ROUND(AVG(mobility_transit_stations), 4) AS AvgMobilityTransitStations,
+            ROUND(AVG(mobility_workplaces), 4) AS AvgMobilityWorkplaces,
+            ROUND(AVG(mobility_residential), 4) AS AvgMobilityResidential
+        FROM
+            "AMMAR.AMJAD".US_Mobility
+        GROUP BY
+            TRUNC(date_key, 'IW'),
+            CASE
+                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
+                ELSE location_key
+            END
+    )
+    SELECT
+        mobi.start_of_week,
+        cts.state_name,
+        ROUND((us_epi.TotalInfected / demo.population), 4) * 100 AS PercentageInfected,
+        mobi.AvgMobilityRetailAndRecreation,
+        mobi.AvgMobilityGroceryAndPharmacy,
+        mobi.AvgMobilityParks,
+        mobi.AvgMobilityTransitStations,
+        mobi.AvgMobilityWorkplaces,
+        mobi.AvgMobilityResidential
+    FROM
+        RGUGALE.US_Demographics demo
+    JOIN WeeklyUSEpidemiology us_epi ON us_epi.truncated_location = demo.location_key
+    JOIN WeeklyUSMobility mobi ON us_epi.truncated_location = mobi.truncated_location AND us_epi.start_of_week = mobi.start_of_week
+    JOIN RGUGALE.Location_INDEX loc ON us_epi.truncated_location = loc.location_key
+    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = loc.location_key
+    WHERE loc.location_key=(SELECT state_code from CODE_TO_STATE where state_name=:input_state)
+    ORDER BY
+        mobi.start_of_week, mobi.truncated_location
+    """
+
+    cursor.execute(query, input_state=input_state)
+    result = cursor.fetchall()
+
+    res_list = []
+    for row in result:
+        data = {
+            "date": row[0],
+            "state": row[1],
+            "infected_population_percent": row[2],
+        }
+
+        # If no mobility_types specified, send back data about all of them
+        if len(mobility_types) == 0:
+            data["mobility_retail_and_recreation"] = row[3]
+            data["mobility_grocery_and_pharmacy"] = row[4]
+            data["mobility_parks"] = row[5]
+            data["mobility_transit_stations"] = row[6]
+            data["mobility_workplaces"] = row[7]
+            data["mobility_residential"] = row[8]
+            res_list.append(data)
+            continue
+
+        # Include only the selected mobility types
+        for mobility_type in mobility_types:
+            if mobility_type == "mobility_retail_and_recreation":
+                data["mobility_retail_and_recreation"] = row[3]
+            elif mobility_type == "mobility_grocery_and_pharmacy":
+                data["mobility_grocery_and_pharmacy"] = row[4]
+            elif mobility_type == "mobility_parks":
+                data["mobility_parks"] = row[5]
+            elif mobility_type == "mobility_transit_stations":
+                data["mobility_transit_stations"] = row[6]
+            elif mobility_type == "mobility_workplaces":
+                data["mobility_workplaces"] = row[7]
+            elif mobility_type == "mobility_residential":
+                data["mobility_residential"] = row[8]
+
+        res_list.append(data)
+
+    print(len(result))
+    cursor.close()
+    connection.close()
+
+    return jsonify(res_list)
+
 # Healthcare stocks vs hospitalizations - returns 34 records
 @app.route('/query3', methods=['GET'])
 def query3():
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
+    print("Request for q3 received")
 
     query = """WITH MonthlyNewCases AS (
         SELECT 
