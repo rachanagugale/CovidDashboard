@@ -17,7 +17,7 @@ dsn = cx_Oracle.makedsn('oracle.cise.ufl.edu', '1521', service_name='orcl')
 db_username = DB_USERNAME
 db_password = DB_PASSWORD
 
-# Weekly infected population percentage vs mobility
+# Weekly infection rate vs mobility
 @app.route('/query1', methods=['POST'])
 def query1():
     data = request.json
@@ -30,30 +30,51 @@ def query1():
     cursor = connection.cursor()
     print("Request for q1 received")
 
-    query = """WITH WeeklyUSEpidemiology AS (
-        SELECT
-            TRUNC(date_key, 'IW') AS start_of_week,
-            CASE
-                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
-                ELSE location_key
-            END AS truncated_location,
-            SUM(cumulative_confirmed) AS TotalInfected
+    query = """WITH 
+    AggregatedCountyData AS (
+        SELECT 
+            date_key,
+            SUBSTR(location_key, 1, 5) AS location_key,
+            NVL(SUM(new_confirmed), 0) AS new_confirmed
         FROM
             rgugale.US_Epidemiology
+        WHERE
+            location_key LIKE 'US____%'
         GROUP BY
-            TRUNC(date_key, 'IW'),
-            CASE
-                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
-                ELSE location_key
-            END
+            date_key, SUBSTR(location_key, 1, 5)
+    ),
+    CurrentlyInfectedCountPerState AS (
+        SELECT
+            date_key,
+            location_key,
+            SUM(new_confirmed) OVER (PARTITION BY location_key ORDER BY date_key ROWS BETWEEN 13 PRECEDING AND CURRENT ROW) AS CurrentlyInfectedCount
+        FROM
+            AggregatedCountyData
+    ),
+    CurrentlyInfectedCountPerStatePerWeek AS (
+        SELECT 
+            date_key AS start_of_week,
+            location_key,
+            CurrentlyInfectedCount
+        FROM
+            CurrentlyInfectedCountPerState
+        WHERE
+            date_key = TRUNC(date_key, 'IW')
+    ),
+    InfectionRatePerStatePerWeek AS (
+        SELECT 
+            cicpspw.location_key, 
+            cicpspw.start_of_week,
+            ROUND((CurrentlyInfectedCount/population)*100, 8) AS InfectionRatePerWeek 
+        FROM
+            CurrentlyInfectedCountPerStatePerWeek cicpspw
+        JOIN
+            rgugale.demographics demo ON cicpspw.location_key = demo.location_key
     ),
     WeeklyUSMobility AS (
         SELECT
             TRUNC(date_key, 'IW') AS start_of_week,
-            CASE
-                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
-                ELSE location_key
-            END AS truncated_location,
+            SUBSTR(location_key, 1, 5) AS location_key,
             ROUND(AVG(mobility_retail_and_recreation), 4) AS AvgMobilityRetailAndRecreation,
             ROUND(AVG(mobility_grocery_and_pharmacy), 4) AS AvgMobilityGroceryAndPharmacy,
             ROUND(AVG(mobility_parks), 4) AS AvgMobilityParks,
@@ -62,33 +83,36 @@ def query1():
             ROUND(AVG(mobility_residential), 4) AS AvgMobilityResidential
         FROM
             "AMMAR.AMJAD".US_Mobility
+        WHERE
+            location_key LIKE 'US____%'
         GROUP BY
             TRUNC(date_key, 'IW'),
-            CASE
-                WHEN location_key LIKE 'US\___%' THEN SUBSTR(location_key, 1, 5)
-                ELSE location_key
-            END
+            SUBSTR(location_key, 1, 5)
     )
     SELECT
-        mobi.start_of_week,
+        TO_CHAR(TRUNC(mobi.start_of_week), 'DD-MON-YYYY'),
         cts.state_name,
-        ROUND((us_epi.TotalInfected / demo.population), 4) * 100 AS PercentageInfected,
-        mobi.AvgMobilityRetailAndRecreation,
-        mobi.AvgMobilityGroceryAndPharmacy,
-        mobi.AvgMobilityParks,
-        mobi.AvgMobilityTransitStations,
-        mobi.AvgMobilityWorkplaces,
-        mobi.AvgMobilityResidential
+        InfectionRatePerStatePerWeek.InfectionRatePerWeek,
+        AvgMobilityRetailAndRecreation,
+        AvgMobilityGroceryAndPharmacy,
+        AvgMobilityParks,
+        AvgMobilityTransitStations,
+        AvgMobilityWorkplaces,
+        AvgMobilityResidential
     FROM
-        RGUGALE.US_Demographics demo
-    JOIN WeeklyUSEpidemiology us_epi ON us_epi.truncated_location = demo.location_key
-    JOIN WeeklyUSMobility mobi ON us_epi.truncated_location = mobi.truncated_location AND us_epi.start_of_week = mobi.start_of_week
-    JOIN RGUGALE.Location_INDEX loc ON us_epi.truncated_location = loc.location_key
-    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = loc.location_key
-    WHERE loc.location_key=(SELECT state_code from RGUGALE.CODE_TO_STATE where state_name=:input_state) 
-        AND us_epi.start_of_week BETWEEN :start_date AND :end_date
+        InfectionRatePerStatePerWeek
+    JOIN
+        WeeklyUSMobility mobi 
+        ON InfectionRatePerStatePerWeek.location_key = mobi.location_key 
+            AND InfectionRatePerStatePerWeek.start_of_week = mobi.start_of_week
+    JOIN
+        RGUGALE.CODE_TO_STATE cts 
+        ON cts.state_code = InfectionRatePerStatePerWeek.location_key
+    WHERE
+        InfectionRatePerStatePerWeek.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state) 
+        AND mobi.start_of_week BETWEEN :start_date AND :end_date
     ORDER BY
-        mobi.start_of_week, mobi.truncated_location
+        mobi.start_of_week, mobi.location_key
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -151,8 +175,8 @@ def query2():
 
     query = """
     SELECT
-        MonthlyGoogleSearches.start_of_month,
-        MonthlyGoogleSearches.location_key,
+        TO_CHAR(TRUNC(MonthlyGoogleSearches.start_of_month), 'MON-YY'),
+        cts.state_name,
         MonthlyGoogleSearches.avg_monthly_sni_covid19_vaccination,
         MonthlyGoogleSearches.avg_monthly_sni_vaccination_intent,
         MonthlyGoogleSearches.avg_monthly_sni_safety_side_effects,
@@ -161,16 +185,16 @@ def query2():
         (
             SELECT
                 TRUNC(date_key, 'MM') AS start_of_month,
-                location_key,
+                SUBSTR(location_key, 1, 5) AS location_key,
                 ROUND(AVG(sni_covid19_vaccination), 4) as avg_monthly_sni_covid19_vaccination,
                 ROUND(AVG(sni_vaccination_intent), 4) as avg_monthly_sni_vaccination_intent,
                 ROUND(AVG(sni_safety_side_effects), 4) as avg_monthly_sni_safety_side_effects
             FROM
                 "AMMAR.AMJAD".vaccination_search
             WHERE
-                location_key LIKE 'US%'
+                location_key LIKE 'US____%' 
             GROUP BY
-                TRUNC(date_key, 'MM'), location_key
+                TRUNC(date_key, 'MM'), SUBSTR(location_key, 1, 5) --Aggregating county data for each state for each month
         ) MonthlyGoogleSearches
     JOIN
         (
@@ -192,13 +216,14 @@ def query2():
                     FROM
                         "AMMAR.AMJAD".us_vaccinations
                     GROUP BY
-                        TRUNC(date_key, 'MM'), location_key
+                        TRUNC(date_key, 'MM'), location_key -- Aggregation on date. No aggregation on county data as suitable county data is not available. Directly used the state data.
                 ) VacInfo
             JOIN
                 Demographics ON VacInfo.location_key = Demographics.location_key
         ) MonthlyVacRate
     ON MonthlyGoogleSearches.start_of_month = MonthlyVacRate.start_of_month
         AND MonthlyGoogleSearches.location_key = MonthlyVacRate.location_key
+    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = MonthlyGoogleSearches.location_key
     WHERE
         MonthlyGoogleSearches.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
         AND MonthlyGoogleSearches.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
