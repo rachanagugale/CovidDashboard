@@ -387,5 +387,49 @@ def query4():
 
     return jsonify(res_list)
 
+# Query to get the total number of rows in the database
+@app.route('/total_row_count', methods=['GET'])
+def total_row_count():
+    connection = cx_Oracle.connect(db_username, db_password, dsn)
+    cursor = connection.cursor()
+
+    query = """
+    SELECT
+        count_code_to_country +
+        count_code_to_state +
+        count_demographics +
+        count_stocks +
+        count_us_epidemiology +
+        count_us_mobility +
+        count_government_responses +
+        count_hospitalizations +
+        count_vaccination_search +
+        count_us_vaccinations AS total_count
+    FROM (
+        SELECT
+            (SELECT COUNT(*) FROM RGUGALE.code_to_country) AS count_code_to_country,
+            (SELECT COUNT(*) FROM RGUGALE.code_to_state) AS count_code_to_state,
+            (SELECT COUNT(*) FROM RGUGALE.demographics) AS count_demographics,
+            (SELECT COUNT(*) FROM RGUGALE.stocks) AS count_stocks,
+            (SELECT COUNT(*) FROM RGUGALE.us_epidemiology) AS count_us_epidemiology,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".us_mobility) AS count_us_mobility,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".government_responses) AS count_government_responses,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".hospitalizations) AS count_hospitalizations,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".vaccination_search) AS count_vaccination_search,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".us_vaccinations) AS count_us_vaccinations
+        FROM dual
+    )
+    """
+
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    connection.close()
+    total_count_json = {
+        "total_count": result[0]
+    }
+
+    return jsonify(total_count_json)
+
 if __name__ == '__main__':
     app.run(debug=True)
