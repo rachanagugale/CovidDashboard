@@ -3,10 +3,18 @@ nav {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  height: 5.5rem;
+  height: 65px;
   width: 100%;
-  padding: 2rem 4rem;
-  background-color: rgb(37, 37, 41);
+  padding: 20px 40px;
+  background-color: #030817;
+  border-bottom: 1px solid rgb(97, 97, 97);
+}
+
+#logo {
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #FFF;
 }
 
 .links {
@@ -16,10 +24,14 @@ nav {
 }
 .links > a {
   color: #FFF;
-  font-size: 1.35rem;
+  font-size: 15px;
   margin: 0 1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 100%;
+  font-weight: bold;
 }
 .links > a:hover {
-  color: #FF6740;
+  color: rgb(69, 84, 253);
   transition: .3s ease-in-out;
 }

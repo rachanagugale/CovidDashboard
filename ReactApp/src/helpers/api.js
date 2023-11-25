@@ -9,6 +9,20 @@ api.interceptors.response.use(
   (err) => Promise.reject(err)
 );
 
+export const getQuery1 = (state = "Florida") => {
+  return api.post("/query1", {
+    state,
+    mobility_types: [
+      "mobility_retail_and_recreation",
+      "mobility_grocery_and_pharmacy",
+      "mobility_parks",
+      "mobility_transit_stations",
+      "mobility_workplaces",
+      "mobility_residential",
+    ],
+  });
+};
+
 export const getQuery3 = () => {
   return api.get("/query3");
 };

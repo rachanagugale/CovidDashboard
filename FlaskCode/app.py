@@ -84,7 +84,7 @@ def query1():
     JOIN WeeklyUSMobility mobi ON us_epi.truncated_location = mobi.truncated_location AND us_epi.start_of_week = mobi.start_of_week
     JOIN RGUGALE.Location_INDEX loc ON us_epi.truncated_location = loc.location_key
     JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = loc.location_key
-    WHERE loc.location_key=(SELECT state_code from CODE_TO_STATE where state_name=:input_state)
+    WHERE loc.location_key=(SELECT state_code from RGUGALE.CODE_TO_STATE where state_name=:input_state)
     ORDER BY
         mobi.start_of_week, mobi.truncated_location
     """
