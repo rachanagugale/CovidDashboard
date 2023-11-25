@@ -17,13 +17,14 @@ dsn = cx_Oracle.makedsn('oracle.cise.ufl.edu', '1521', service_name='orcl')
 db_username = DB_USERNAME
 db_password = DB_PASSWORD
 
-
-# Infected population percentage vs mobility
+# Weekly infected population percentage vs mobility
 @app.route('/query1', methods=['POST'])
 def query1():
     data = request.json
     input_state = data.get('state')
     mobility_types = data.get('mobility_types', [])
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
 
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
@@ -84,12 +85,13 @@ def query1():
     JOIN WeeklyUSMobility mobi ON us_epi.truncated_location = mobi.truncated_location AND us_epi.start_of_week = mobi.start_of_week
     JOIN RGUGALE.Location_INDEX loc ON us_epi.truncated_location = loc.location_key
     JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = loc.location_key
-    WHERE loc.location_key=(SELECT state_code from CODE_TO_STATE where state_name=:input_state)
+    WHERE loc.location_key=(SELECT state_code from RGUGALE.CODE_TO_STATE where state_name=:input_state) 
+        AND us_epi.start_of_week BETWEEN :start_date AND :end_date
     ORDER BY
         mobi.start_of_week, mobi.truncated_location
     """
 
-    cursor.execute(query, input_state=input_state)
+    cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()
 
     res_list = []
@@ -133,6 +135,99 @@ def query1():
     connection.close()
 
     return jsonify(res_list)
+
+
+# Monthly vaccination search trends vs infection rate
+@app.route('/query2', methods=['POST'])
+def query2():
+    data = request.json
+    input_state = data.get('state')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+
+    connection = cx_Oracle.connect(db_username, db_password, dsn)
+    cursor = connection.cursor()
+    print("Request for q2 received")
+
+    query = """
+    SELECT
+        MonthlyGoogleSearches.start_of_month,
+        MonthlyGoogleSearches.location_key,
+        MonthlyGoogleSearches.avg_monthly_sni_covid19_vaccination,
+        MonthlyGoogleSearches.avg_monthly_sni_vaccination_intent,
+        MonthlyGoogleSearches.avg_monthly_sni_safety_side_effects,
+        MonthlyVacRate.VaccinationRate
+    FROM
+        (
+            SELECT
+                TRUNC(date_key, 'MM') AS start_of_month,
+                location_key,
+                ROUND(AVG(sni_covid19_vaccination), 4) as avg_monthly_sni_covid19_vaccination,
+                ROUND(AVG(sni_vaccination_intent), 4) as avg_monthly_sni_vaccination_intent,
+                ROUND(AVG(sni_safety_side_effects), 4) as avg_monthly_sni_safety_side_effects
+            FROM
+                "AMMAR.AMJAD".vaccination_search
+            WHERE
+                location_key LIKE 'US%'
+            GROUP BY
+                TRUNC(date_key, 'MM'), location_key
+        ) MonthlyGoogleSearches
+    JOIN
+        (
+            SELECT
+                VacInfo.start_of_month,
+                VacInfo.location_key,
+                VacInfo.new_persons_vaccinated,
+                Demographics.population,
+                ROUND(VacInfo.new_persons_vaccinated/Demographics.population*100, 4) as VaccinationRate
+            FROM
+                (
+                    SELECT
+                        TRUNC(date_key, 'MM') AS start_of_month,
+                        location_key,
+                        ROUND(AVG(new_persons_vaccinated), 4) AS new_persons_vaccinated,
+                        ROUND(AVG(cumulative_persons_vaccinated), 4) AS cumulative_persons_vaccinated,
+                        ROUND(AVG(new_persons_fully_vaccinated), 4) AS new_persons_fully_vaccinated,
+                        ROUND(AVG(cumulative_persons_fully_vaccinated), 4) AS cumulative_persons_fully_vaccinated
+                    FROM
+                        "AMMAR.AMJAD".us_vaccinations
+                    GROUP BY
+                        TRUNC(date_key, 'MM'), location_key
+                ) VacInfo
+            JOIN
+                Demographics ON VacInfo.location_key = Demographics.location_key
+        ) MonthlyVacRate
+    ON MonthlyGoogleSearches.start_of_month = MonthlyVacRate.start_of_month
+        AND MonthlyGoogleSearches.location_key = MonthlyVacRate.location_key
+    WHERE
+        MonthlyGoogleSearches.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
+        AND MonthlyGoogleSearches.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
+    ORDER BY
+        MonthlyGoogleSearches.start_of_month, MonthlyGoogleSearches.location_key
+    """
+
+    cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
+    result = cursor.fetchall()
+
+    res_list = []
+    for row in result:
+        data = {
+            "date": row[0],
+            "state": row[1],
+            "avg_monthly_sni_covid19_vaccination": row[2],
+            "avg_monthly_sni_vaccination_intent": row[3],
+            "avg_monthly_sni_safety_side_effects": row[4],
+            "vaccination_rate": row[5]
+        }
+
+        res_list.append(data)
+
+    print(len(result))
+    cursor.close()
+    connection.close()
+
+    return jsonify(res_list)
+
 
 # Healthcare stocks vs hospitalizations - returns 34 records
 @app.route('/query3', methods=['GET'])
