@@ -3,10 +3,10 @@ import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./index.css";
 
-import { ThemeProvider } from "./components/theme-provider";
-import NavigationBar from "./components/NavigationBar";
-import Query1 from "./components/Query1";
-import Query3 from "./components/Query3";
+import { ThemeProvider } from "@/components/theme-provider";
+import NavigationBar from "@/components/NavigationBar";
+import Query1 from "@/components/Query1";
+import Query3 from "@/components/Query3";
 
 const routes = [
   {

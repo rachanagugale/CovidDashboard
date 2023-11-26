@@ -9,9 +9,11 @@ api.interceptors.response.use(
   (err) => Promise.reject(err)
 );
 
-export const getQuery1 = (state = "Florida") => {
+export const getQuery1 = (state, start_date, end_date) => {
   return api.post("/query1", {
     state,
+    start_date,
+    end_date,
     mobility_types: [
       "mobility_retail_and_recreation",
       "mobility_grocery_and_pharmacy",
