@@ -306,78 +306,138 @@ def query3():
 
     return jsonify(res_list)
 
-
-# Government stringency measures - returns 28k records
-@app.route('/query4', methods=['GET'])
+# Ratio of no. of deaths vs no. of newly hospitalized patients for states grouped into 4 categories 
+# according to no. of physicians per 100000 people.
+@app.route('/query4', methods=['POST'])
 def query4():
+    data = request.json
+    physician_categories = data.get('physician_categories', [])
+    print(physician_categories)
+    if len(physician_categories) == 0:
+        physician_categories = ["Low (<200)", "Decent (200-300)", "Good (300-400)", "Very good (>400)"]
+    else:
+        # tuple() adds a comma at the end for tuples with only 1 element. To avoid that, creating my own tuple.
+        if len(physician_categories) == 1:
+            physician_tuple = "('" + physician_categories[0] + "')"
+        else:
+            physician_tuple = tuple(physician_categories)
+    print(physician_tuple)
+
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
 
-    query = """WITH VaccinationRate AS (
-        SELECT 
-            date_key,
-            location_key,
-            SUM(new_persons_vaccinated) OVER (PARTITION BY location_key ORDER BY date_key ASC) AS rolling_sum_vaccinated,
-            AVG(new_persons_vaccinated) OVER (PARTITION BY location_key ORDER BY date_key ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Weekly_day_avg_vaccinated
-        FROM
-            RGUGALE.US_VACCINATIONS
-    ),
-    StringencyMeasures AS (
-        SELECT 
-            date_key,
-            location_key,
-            AVG(stringency_index) OVER (PARTITION BY location_key ORDER BY date_key ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Weekly_day_avg_stringency
-        FROM 
-            "AMMAR.AMJAD".GOVERNMENT_RESPONSES
-    )
+    query = """
+        WITH 
+        HospitalizationsForStates AS (
+            (
+                SELECT 
+                    date_key,
+                    location_key,
+                    new_hospitalized_patients
+                FROM
+                    "AMMAR.AMJAD".hospitalizations
+                WHERE
+                    location_key LIKE 'US___'
+            )
+            MINUS
+            -- Get rid of US_NY values as they are incomplete
+            (
+                SELECT 
+                    date_key,
+                    location_key,
+                    new_hospitalized_patients
+                FROM
+                    "AMMAR.AMJAD".hospitalizations
+                WHERE
+                    location_key LIKE 'US_NY'
+            )
+            UNION
+            -- Sum up county data for NY
+            (
+                SELECT 
+                    date_key,
+                    SUBSTR(location_key, 1, 5) AS location_key,
+                    SUM(new_hospitalized_patients) AS new_hospitalized_patients
+                FROM
+                    "AMMAR.AMJAD".hospitalizations
+                WHERE
+                    location_key LIKE 'US_NY_%'
+                GROUP BY
+                    date_key,
+                    SUBSTR(location_key, 1, 5)
+            )
+        ),
+        EpidemiologyForStates AS (
+            SELECT
+                date_key,
+                SUBSTR(location_key, 1, 5) AS location_key,
+                SUM(new_deceased) AS new_deceased
+            FROM
+                RGUGALE.us_epidemiology
+            WHERE 
+                location_key LIKE 'US____%' 
+            GROUP BY
+                date_key, SUBSTR(location_key, 1, 5)
+        ),
+        RatioOfDeathsToHospitalizedPeople AS (
+            SELECT
+                HospitalizationsForStates.date_key,
+                HospitalizationsForStates.location_key,
+                (new_deceased / NULLIF(new_hospitalized_patients, 0)) AS ratio_of_deaths
+            FROM
+                HospitalizationsForStates 
+            JOIN
+                EpidemiologyForStates 
+            ON 
+                HospitalizationsForStates.date_key = EpidemiologyForStates.date_key 
+                AND HospitalizationsForStates.location_key = EpidemiologyForStates.location_key
+            WHERE 
+                HospitalizationsForStates.date_key BETWEEN :start_date AND :end_date
+        ),
+        StateAndPhysicians AS (
+            SELECT 
+                location_key,
+                physicians_per_100000,
+                CASE
+                    WHEN physicians_per_100000 < 200 THEN 'Low (<200)'
+                    WHEN physicians_per_100000 >= 200 AND physicians_per_100000 < 300 THEN 'Decent (200-300)'
+                    WHEN physicians_per_100000 >= 300 AND physicians_per_100000 < 400 THEN 'Good (300-400)'
+                    WHEN physicians_per_100000 >= 400 THEN 'Very good (>400)'
+                    ELSE 'Unknown'
+                END AS physician_category
+            FROM
+                rgugale.health_stats
+            WHERE 
+                location_key LIKE 'US___'
+        )
     SELECT 
-        V.date_key,
-        V.location_key,
-        V.rolling_sum_vaccinated,
-        V.Weekly_day_avg_vaccinated,
-        S.Weekly_day_avg_stringency,
-        G.stay_at_home_requirements,
-        G.public_transport_closing,
-        G.school_closing,
-        G.workplace_closing,
-        G.cancel_public_events,
-        G.restrictions_on_gatherings,
-        G.restrictions_on_internal_movement,
-        G.international_travel_controls
-    FROM 
-        VaccinationRate V
-    INNER JOIN 
-        StringencyMeasures S
-    ON 
-        V.date_key = S.date_key AND V.location_key = S.location_key
-    INNER JOIN 
-        "AMMAR.AMJAD".GOVERNMENT_RESPONSES G
-    ON 
-        V.date_key = G.date_key AND V.location_key = G.location_key
-    WHERE 
-        V.date_key >= TO_DATE('2020-01-01', 'YYYY-MM-DD') AND V.date_key <= TO_DATE('2022-12-31', 'YYYY-MM-DD')
-    ORDER BY 
-        V.date_key ASC, V.location_key ASC"""
+        TO_CHAR(TRUNC(RatioOfDeathsToHospitalizedPeople.date_key), 'DD-MON-YY'),
+        physician_category,
+        GREATEST(NVL(ROUND(AVG(RatioOfDeathsToHospitalizedPeople.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
+    FROM
+        RatioOfDeathsToHospitalizedPeople
+    JOIN
+        StateAndPhysicians ON RatioOfDeathsToHospitalizedPeople.location_key = StateAndPhysicians.location_key
+    JOIN
+        rgugale.code_to_state ON  code_to_state.state_code = StateAndPhysicians.location_key
+    WHERE physician_category in {}
+    GROUP BY
+        RatioOfDeathsToHospitalizedPeople.date_key, physician_category
+    ORDER BY
+        physician_category, date_key""".format(physician_tuple)
 
-    cursor.execute(query)
+    cursor.execute(query, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()
 
     res_list = []
     for row in result:
         data = {
             "date": row[0],
-            "location_key": row[1],
-            "rolling_sum_vaccinated": row[2],
-            "weekly_day_avg_vaccinated": row[3],
-            "weekly_day_avg_stringency": row[4],
-            "stay_at_home_requirements": row[5],
-            "public_transport_closing": row[6],
-            "school_closing": row[7],
-            "workplace_closing": row[8],
-            "cancel_public_events": row[9],
-            "restrictions_on_gatherings": row[10],
-            "restrictions_on_internal_movement": row[11],
-            "international_travel_controls": row[12]
+            "physician_category": row[1],
+            "avg_ratio_of_deaths_to_hospitalized_people": row[2]
         }
         res_list.append(data)
 
