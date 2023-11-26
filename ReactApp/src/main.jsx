@@ -3,7 +3,9 @@ import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./index.css";
 
+import { ThemeProvider } from "./components/theme-provider";
 import NavigationBar from "./components/NavigationBar";
+import Query1 from "./components/Query1";
 import Query3 from "./components/Query3";
 
 const routes = [
@@ -15,7 +17,7 @@ const routes = [
   {
     label: "Query 1",
     path: "/query1",
-    element: <Query3 />,
+    element: <Query1 />,
   },
   {
     label: "Query 2",
@@ -43,11 +45,13 @@ const router = createBrowserRouter(routes);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <main>
-      <NavigationBar routes={routes} />
-      <div>
-        <RouterProvider router={router} />
-      </div>
-    </main>
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <main>
+        <NavigationBar routes={routes} />
+        <div className="content">
+          <RouterProvider router={router} />
+        </div>
+      </main>
+    </ThemeProvider>
   </React.StrictMode>
 );

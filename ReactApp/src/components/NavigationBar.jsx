@@ -3,7 +3,7 @@ import "./NavigationBar.css";
 export default function NavigationBar({ routes }) {
   return (
     <nav>
-      <a href="/">
+      <a href="/" id="logo">
         <span className="material-symbols-outlined">token</span>
       </a>
 
