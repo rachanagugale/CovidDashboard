@@ -219,7 +219,7 @@ def query2():
                         TRUNC(date_key, 'MM'), location_key -- Aggregation on date. No aggregation on county data as suitable county data is not available. Directly used the state data.
                 ) VacInfo
             JOIN
-                Demographics ON VacInfo.location_key = Demographics.location_key
+                "RGUGALE".Demographics ON VacInfo.location_key = Demographics.location_key
         ) MonthlyVacRate
     ON MonthlyGoogleSearches.start_of_month = MonthlyVacRate.start_of_month
         AND MonthlyGoogleSearches.location_key = MonthlyVacRate.location_key

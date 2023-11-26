@@ -1,0 +1,14 @@
+.query-2 {
+  height: calc(100vh - 65px);
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.chart {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  width: 100%;
+  padding: 2rem;
+}
