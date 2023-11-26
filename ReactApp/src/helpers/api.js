@@ -25,6 +25,14 @@ export const getQuery1 = (state, start_date, end_date) => {
   });
 };
 
+export const getQuery2 = (state, start_date, end_date) => {
+  return api.post("/query2", {
+    state,
+    start_date,
+    end_date,
+  });
+};
+
 export const getQuery3 = () => {
   return api.get("/query3");
 };

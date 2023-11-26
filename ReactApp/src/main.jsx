@@ -6,6 +6,7 @@ import "./index.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import NavigationBar from "@/components/NavigationBar";
 import Query1 from "@/components/Query1";
+import Query2 from "@/components/Query2";
 import Query3 from "@/components/Query3";
 
 const routes = [
@@ -22,7 +23,7 @@ const routes = [
   {
     label: "Query 2",
     path: "/query2",
-    element: <Query3 />,
+    element: <Query2 />,
   },
   {
     label: "Query 3",
