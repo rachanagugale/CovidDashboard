@@ -33,8 +33,24 @@ export const getQuery2 = (state, start_date, end_date) => {
   });
 };
 
-export const getQuery3 = () => {
-  return api.get("/query3");
+export const getQuery3 = (start_date, end_date) => {
+  return api.post("/query3", {
+    start_date,
+    end_date,
+    sectors: [
+      "Financials",
+      "Information Technology",
+      "Consumer Discretionary",
+      "Consumer Staples",
+      "Materials",
+      "Real Estate",
+      "Energy",
+      "Industrials",
+      "Health Care",
+      "Utilities",
+      "Telecommunication Services",
+    ],
+  });
 };
 
 export const getQuery4 = (start_date, end_date) => {
