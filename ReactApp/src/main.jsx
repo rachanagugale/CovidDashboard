@@ -8,6 +8,8 @@ import NavigationBar from "@/components/NavigationBar";
 import Query1 from "@/components/Query1";
 import Query2 from "@/components/Query2";
 import Query3 from "@/components/Query3";
+import Query4 from "@/components/Query4";
+import Query5 from "@/components/Query5";
 
 const routes = [
   {
@@ -33,12 +35,12 @@ const routes = [
   {
     label: "Query 4",
     path: "/query4",
-    element: <Query3 />,
+    element: <Query4 />,
   },
   {
     label: "Query 5",
     path: "/query5",
-    element: <Query3 />,
+    element: <Query5 />,
   },
 ];
 

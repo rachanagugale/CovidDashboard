@@ -15,8 +15,8 @@ import _ from "lodash";
 
 import Loading from "@/components/Loading";
 import Options from "./Options";
-import { getQuery2 } from "../../helpers/api";
-import "./Query2.css";
+import { getQuery5 } from "../../helpers/api";
+import "./Query5.css";
 
 ChartJS.register(
   CategoryScale,
@@ -47,10 +47,9 @@ const options = {
       type: "linear",
       display: true,
       position: "left",
-
       title: {
         display: true,
-        text: "SNI",
+        text: "Mortality rate per 100000 people",
       },
     },
     y1: {
@@ -60,10 +59,9 @@ const options = {
       grid: {
         drawOnChartArea: false,
       },
-
       title: {
         display: true,
-        text: "Vaccination Rate",
+        text: "Number of states",
       },
     },
   },
@@ -71,34 +69,17 @@ const options = {
 
 const formatData = (data) => {
   const dates = _.map(data, ({ date }) => new Date(date).toDateString());
-  const [
-    avg_monthly_sni_covid19_vaccination,
-    avg_monthly_sni_safety_side_effects,
-    avg_monthly_sni_vaccination_intent,
-    vaccination_rate,
-  ] = _.map(
-    [
-      "avg_monthly_sni_covid19_vaccination",
-      "avg_monthly_sni_safety_side_effects",
-      "avg_monthly_sni_vaccination_intent",
-      "vaccination_rate",
-    ],
+  const [cat_1, cat_2, cat_3, cat_4, cat_5, count] = _.map(
+    ["0-19", "20-39", "40-59", "60-79", "80-100", "count"],
     (attr) => _.map(data, (row) => _.get(row, attr))
   );
 
   const datasets = [
-    [
-      "Average Monthly SNI Covid 19 Vaccination",
-      avg_monthly_sni_covid19_vaccination,
-    ],
-    [
-      "Average Monthly SNI Safety Side Effects",
-      avg_monthly_sni_safety_side_effects,
-    ],
-    [
-      "Average Monthly SNI Vaccination Intent",
-      avg_monthly_sni_vaccination_intent,
-    ],
+    ["0-19", cat_1],
+    ["20-39", cat_2],
+    ["40-59", cat_3],
+    ["60-79", cat_4],
+    ["80-100", cat_5],
   ];
 
   return {
@@ -111,8 +92,8 @@ const formatData = (data) => {
       yAxisID: "y",
     })).concat([
       {
-        label: "Vaccination Rate",
-        data: vaccination_rate,
+        label: "Count of States",
+        data: count,
         borderWidth: 2,
         pointRadius: 0,
         yAxisID: "y1",
@@ -125,14 +106,14 @@ export default function Query2() {
   const [data, setData] = useState(null);
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    state: "Florida",
-    start_date: "11-FEB-21",
-    end_date: "11-DEC-21",
+    start_date: "01-JAN-20",
+    end_date: "01-JAN-23",
+    party: "D",
   });
 
   useEffect(() => {
     setLoading(true);
-    getQuery2(form.state, form.start_date, form.end_date)
+    getQuery5(form.party, form.start_date, form.end_date)
       .then((data) => {
         const formattedData = formatData(data);
         setData(formattedData);
@@ -145,10 +126,10 @@ export default function Query2() {
   if (!data) return <Loading />;
 
   return (
-    <div className="query-2">
+    <div className="query-5">
       <Options
-        state={form.state}
-        setState={(state) => setForm({ ...form, state })}
+        party={form.party}
+        setParty={(party) => setForm({ ...form, party })}
         dates={_.pick(form, ["start_date", "end_date"])}
         setDate={(start_date, end_date) =>
           setForm({ ...form, start_date, end_date })
@@ -159,20 +140,10 @@ export default function Query2() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 2 Utility</h2>
+            <h2 style={{ marginBottom: "10px" }}>Query 5 Utility</h2>
             <p className="text-sm text-muted-foreground mb-20">
-              Helps in understanding of the dynamics surrounding vaccination
-              efforts. Monitoring "general_vaccine_interest" helps gauge overall
-              public awareness, while "vaccination_intent_interest" indicates
-              the population's willingness to get vaccinated. Simultaneously,
-              tracking "safety_side_effects_interest" assists in addressing
-              concerns related to vaccine safety. By correlating these trends
-              with vaccination rates, policymakers can tailor communication
-              strategies, targeting areas with low intent or high safety
-              concerns. The data also enables rapid response to emerging issues,
-              supports predictive modeling, and allows for informed allocation
-              of resources, ultimately aiding in fostering vaccination uptake
-              and addressing hesitancy effectively.
+              Query to compare the mortality rate in democratic vs republican
+              states based on their stringency index per week
             </p>
             <Line options={options} data={data} />
           </div>

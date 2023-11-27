@@ -1,4 +1,4 @@
-.query-2 {
+.query-4 {
   height: calc(100vh - 65px);
   display: flex;
   flex-direction: row;
@@ -8,6 +8,8 @@
 .chart {
   display: grid;
   place-items: center;
+  height: 100%;
+  width: 100%;
   padding: 2rem;
 }
 
