@@ -90,7 +90,7 @@ def query1():
             SUBSTR(location_key, 1, 5)
     )
     SELECT
-        mobi.start_of_week
+        mobi.start_of_week,
         cts.state_name,
         InfectionRatePerStatePerWeek.InfectionRatePerWeek,
         AvgMobilityRetailAndRecreation,
