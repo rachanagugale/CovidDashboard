@@ -552,11 +552,11 @@ def query5():
     # How this query works:
     # 1. Calculate the average weekly stringency_index for each state.
     # 2. Calculate which of the 5 stringency level categories the state lies in.
+    # 3. Get the number of states that belong to a stringency level category for each week for each party.
     # 3. Get the weekly deceased count per state by aggregating the daily deceased count.
-    # 4. For each state, get the mortality rate per 100000 people by joining the deceased data 
-    # with population data from demographics table.
-    # 5. Get the ruling party for each state by joining with the code_to_state table.
-    # 6. Group by the ruling party and the stringency level category.
+    # 4. For each party, get the aggregate average mortality rate per 100000 people for the week across all the states where it rules
+    # by joining the deceased data with population data from demographics table.
+    # 6. Join the stringency and mortality information.
     # 7. Filter by date and the ruling party.
     query = """
     WITH WeeklyStringency AS (
@@ -583,7 +583,17 @@ def query5():
             END AS stringency_category
         FROM WeeklyStringency
     ),
-    WeeklyDeceased AS (
+    NoOfStatesInEachStringencyCategoryPerParty AS (
+        SELECT 
+            start_of_week, 
+            ruling_party, 
+            stringency_category,
+            COUNT(WeeklyStringencyWithCategory.location_key) AS noOfStates
+        FROM WeeklyStringencyWithCategory
+        JOIN rgugale.code_to_state ON code_to_state.state_code = WeeklyStringencyWithCategory.location_key
+        GROUP BY start_of_week, ruling_party, stringency_category
+    ),
+    WeeklyDeceasedPerState AS (
         SELECT 
             TRUNC(date_key, 'IW') AS start_of_week,
             location_key,
@@ -592,53 +602,52 @@ def query5():
         WHERE location_key LIKE 'US___'
         GROUP BY TRUNC(date_key, 'IW'), location_key
     ),
-    MortalityInfo AS (
+    MortalityRatePerWeekPerRulingParty AS (
         SELECT 
             start_of_week,
-            WeeklyDeceased.location_key,
-            GREATEST(ROUND(weekly_avg_deceased * 100000 / population, 8), 0) AS mortality_rate_100000 --mortality rate for every 1000 people
+            ruling_party,
+            AVG(GREATEST(ROUND(weekly_avg_deceased * 100000 / population, 8), 0)) AS mortality_rate_100000 --mortality rate for every 1000 people
         FROM
-            WeeklyDeceased 
-            JOIN rgugale.Demographics ON WeeklyDeceased.location_key = Demographics.location_key
+            WeeklyDeceasedPerState 
+            JOIN rgugale.Demographics ON WeeklyDeceasedPerState.location_key = Demographics.location_key
+            JOIN rgugale.code_to_state ON code_to_state.state_code = Demographics.location_key
+        GROUP BY start_of_week, ruling_party
     )
     SELECT
-        WeeklyStringencyWithCategory.start_of_week,
-        ruling_party,
+        mor.start_of_week,
         stringency_category,
-        COUNT(WeeklyStringencyWithCategory.location_key) AS noOfStates,
-        ROUND(AVG(MortalityInfo.mortality_rate_100000), 8) AS mortality_rate_100000
-    FROM WeeklyStringencyWithCategory
-    JOIN MortalityInfo ON MortalityInfo.start_of_week = WeeklyStringencyWithCategory.start_of_week AND MortalityInfo.location_key = WeeklyStringencyWithCategory.location_key
-    JOIN rgugale.code_to_state ON code_to_state.state_code = WeeklyStringencyWithCategory.location_key
-    WHERE MortalityInfo.start_of_week BETWEEN :start_date and :end_date AND ruling_party=:party
-    GROUP BY WeeklyStringencyWithCategory.start_of_week, ruling_party, stringency_category
-    ORDER BY WeeklyStringencyWithCategory.start_of_week, ruling_party, stringency_category
+        noOfStates,
+        ROUND(mortality_rate_100000, 8) AS mortality_rate_100000
+    FROM
+        NoOfStatesInEachStringencyCategoryPerParty str_cat
+    JOIN MortalityRatePerWeekPerRulingParty mor ON mor.start_of_week = str_cat.start_of_week AND mor.ruling_party = str_cat.ruling_party
+    WHERE mor.start_of_week BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
+    ORDER BY mor.start_of_week, mor.ruling_party, stringency_category
     """
 
     cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
     result = cursor.fetchall()
-    res_hash_map = {}
 
+    res_map = {}
     for row in result:
-        date = row[0]
-        stringency_key = row[2]
-        count = row[3]
-        mortality_rate_per_100000 = row[4]
+        if str(row[0]) not in res_map:
+            res_map[str(row[0])] = {}
+            res_map[str(row[0])]["mortality_rate_100000"] = row[3]
+            res_map[str(row[0])]["stringency_categories"] = {
+                "0-19": 0,
+                "20-39": 0,
+                "40-59": 0,
+                "60-79": 0,
+                "80-100": 0
+            }
 
-        if date not in res_hash_map: res_hash_map[date] = { 'date': date }
-        res_hash_map[date][stringency_key] = mortality_rate_per_100000
-        res_hash_map[date]['count'] = count
+        res_map[str(row[0])]["stringency_categories"][row[1]] = row[2]    
 
-        # if stringency_key not in res_hash_map:
-        #     res_hash_map[stringency_key] = {}
-
-        # res_hash_map[stringency_key][str(row[0])] = {"count": row[3], "mortality_rate_per_100000": row[4]}
-
-    print(len(res_hash_map))
+    print(len(res_map))
     cursor.close()
     connection.close()
 
-    return jsonify(list(res_hash_map.values()))
+    return jsonify(res_map)
 
 # Query to get the total number of rows in the database
 @app.route('/total_row_count', methods=['GET'])
