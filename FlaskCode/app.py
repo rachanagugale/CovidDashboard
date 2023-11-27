@@ -649,29 +649,30 @@ def query5():
 
     return jsonify(res_map)
 
-# Query to get the total number of rows in the database
-@app.route('/total_row_count', methods=['GET'])
+# Query to get row count for each table and the total number of rows in the database
+@app.route('/row_count', methods=['GET'])
 def total_row_count():
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
 
     query = """
     SELECT
-        count_code_to_country +
-        count_code_to_state +
-        count_demographics +
-        count_snp500 +
-        count_snp500_company_info +
-        count_us_epidemiology +
-        count_us_mobility +
-        count_government_responses +
-        count_hospitalizations +
-        count_vaccination_search +
+        count_code_to_country,
+        count_demographics,
+        count_snp500,
+        count_snp500_company_info,
+        count_us_epidemiology,
+        count_us_mobility,
+        count_government_responses,
+        count_hospitalizations,
+        count_vaccination_search,
+        count_us_vaccinations,
+        count_code_to_country + count_demographics + count_snp500 + count_snp500_company_info + count_us_epidemiology +
+        count_us_mobility + count_government_responses + count_hospitalizations + count_vaccination_search +
         count_us_vaccinations AS total_count
     FROM (
         SELECT
             (SELECT COUNT(*) FROM RGUGALE.code_to_country) AS count_code_to_country,
-            (SELECT COUNT(*) FROM RGUGALE.code_to_state) AS count_code_to_state,
             (SELECT COUNT(*) FROM RGUGALE.demographics) AS count_demographics,
             (SELECT COUNT(*) FROM "AMMAR.AMJAD".snp500) AS count_snp500,
             (SELECT COUNT(*) FROM RGUGALE.snp500_company_info) AS count_snp500_company_info,
@@ -687,12 +688,23 @@ def total_row_count():
 
     cursor.execute(query)
     result = cursor.fetchone()
-    cursor.close()
-    connection.close()
+    
     total_count_json = {
-        "total_count": result[0]
+        "code_to_country": result[0],
+        "demographics": result[1],
+        "snp500": result[2],
+        "snp500_company_info": result[3],
+        "us_epidemiology": result[4],
+        "us_mobility": result[5],
+        "government_responses": result[6],
+        "hospitalizations": result[7],
+        "vaccination_search": result[8],
+        "us_vaccinations": result[9],
+        "total_row_count": result[10]
     }
 
+    cursor.close()
+    connection.close()
     return jsonify(total_count_json)
 
 if __name__ == '__main__':
