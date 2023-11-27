@@ -90,7 +90,7 @@ def query1():
             SUBSTR(location_key, 1, 5)
     )
     SELECT
-        TO_CHAR(TRUNC(mobi.start_of_week), 'DD-MON-YYYY'),
+        mobi.start_of_week
         cts.state_name,
         InfectionRatePerStatePerWeek.InfectionRatePerWeek,
         AvgMobilityRetailAndRecreation,
@@ -175,7 +175,7 @@ def query2():
 
     query = """
     SELECT
-        TO_CHAR(TRUNC(MonthlyGoogleSearches.start_of_month), 'MON-YY'),
+        MonthlyGoogleSearches.start_of_month,
         cts.state_name,
         MonthlyGoogleSearches.avg_monthly_sni_covid19_vaccination,
         MonthlyGoogleSearches.avg_monthly_sni_vaccination_intent,
@@ -306,8 +306,8 @@ def query3():
 
     return jsonify(res_list)
 
-# Ratio of no. of deaths vs no. of newly hospitalized patients for states grouped into 4 categories 
-# according to no. of physicians per 100000 people.
+# Ratio of no. of deaths vs no. of newly hospitalized patients for states 
+# grouped into 4 categories according to no. of physicians per 100000 people.
 @app.route('/query4', methods=['POST'])
 def query4():
     data = request.json
@@ -414,7 +414,7 @@ def query4():
                 location_key LIKE 'US___'
         )
     SELECT 
-        TO_CHAR(TRUNC(RatioOfDeathsToHospitalizedPeople.date_key), 'DD-MON-YY'),
+        RatioOfDeathsToHospitalizedPeople.date_key,
         physician_category,
         GREATEST(NVL(ROUND(AVG(RatioOfDeathsToHospitalizedPeople.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
     FROM
@@ -438,6 +438,94 @@ def query4():
             "date": row[0],
             "physician_category": row[1],
             "avg_ratio_of_deaths_to_hospitalized_people": row[2]
+        }
+        res_list.append(data)
+
+    print(len(result))
+    cursor.close()
+    connection.close()
+
+    return jsonify(res_list)
+
+@app.route('/query5', methods=['POST'])
+def query5():
+    data = request.json
+    party = data.get('party')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    print("Request for q5 received")
+
+    connection = cx_Oracle.connect(db_username, db_password, dsn)
+    cursor = connection.cursor()
+
+    query = """
+    WITH WeeklyStringency AS (
+        SELECT 
+            TRUNC(date_key, 'IW') AS start_of_week,
+            location_key,
+            ROUND(AVG(stringency_index), 4) AS weekly_avg_stringency_index 
+        FROM "AMMAR.AMJAD".government_responses 
+        WHERE location_key LIKE 'US_%'
+        GROUP BY TRUNC(date_key, 'IW'), location_key
+    ),
+    WeeklyStringencyWithCategory AS (
+        SELECT
+            start_of_week,
+            location_key,
+            weekly_avg_stringency_index,
+            CASE
+                WHEN weekly_avg_stringency_index < 20 THEN '0-19'
+                WHEN weekly_avg_stringency_index >= 20 AND weekly_avg_stringency_index < 40 THEN '20-39'
+                WHEN weekly_avg_stringency_index >= 40 AND weekly_avg_stringency_index < 60 THEN '40-59'
+                WHEN weekly_avg_stringency_index >= 60 AND weekly_avg_stringency_index < 80 THEN '60-79'
+                WHEN weekly_avg_stringency_index >= 80 AND weekly_avg_stringency_index < 100 THEN '80-100'
+                ELSE 'Unknown'
+            END AS stringency_category
+        FROM WeeklyStringency
+    ),
+    WeeklyDeceased AS (
+        SELECT 
+            TRUNC(date_key, 'IW') AS start_of_week,
+            SUBSTR(location_key, 1, 5) AS location_key,
+            SUM(new_deceased) AS weekly_avg_deceased
+        FROM rgugale.US_Epidemiology
+        WHERE location_key LIKE 'US___'
+        GROUP BY TRUNC(date_key, 'IW'), SUBSTR(location_key, 1, 5)
+    ),
+    MortalityInfo AS (
+        SELECT 
+            start_of_week,
+            WeeklyDeceased.location_key,
+            GREATEST(ROUND(weekly_avg_deceased * 100000 / population, 8), 0) AS mortality_rate_100000 --mortality rate for every 1000 people
+        FROM
+            WeeklyDeceased 
+            JOIN rgugale.Demographics ON WeeklyDeceased.location_key = Demographics.location_key
+    )
+    SELECT
+        WeeklyStringencyWithCategory.start_of_week,
+        ruling_party,
+        stringency_category,
+        COUNT(WeeklyStringencyWithCategory.location_key) AS noOfStates,
+        ROUND(AVG(MortalityInfo.mortality_rate_100000), 8) AS mortality_rate_100000
+    FROM WeeklyStringencyWithCategory
+    JOIN MortalityInfo ON MortalityInfo.start_of_week = WeeklyStringencyWithCategory.start_of_week AND MortalityInfo.location_key = WeeklyStringencyWithCategory.location_key
+    JOIN rgugale.code_to_state ON code_to_state.state_code = WeeklyStringencyWithCategory.location_key
+    WHERE MortalityInfo.start_of_week BETWEEN :start_date and :end_date AND ruling_party=:party
+    GROUP BY WeeklyStringencyWithCategory.start_of_week, ruling_party, stringency_category
+    ORDER BY WeeklyStringencyWithCategory.start_of_week, ruling_party, stringency_category
+    """
+
+    cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
+    result = cursor.fetchall()
+
+    res_list = []
+    for row in result:
+        data = {
+            "date": row[0],
+            "ruling_party": row[1],
+            "stringency_category": row[2],
+            "no_of_states": row[3],
+            "mortality_rate_per_100000": row[4]
         }
         res_list.append(data)
 
