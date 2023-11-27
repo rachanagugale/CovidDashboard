@@ -18,7 +18,7 @@ dsn = cx_Oracle.makedsn('oracle.cise.ufl.edu', '1521', service_name='orcl')
 db_username = DB_USERNAME
 db_password = DB_PASSWORD
 
-# Weekly infection rate vs mobility
+# Weekly infection rate vs mobility for a state
 @app.route('/query1', methods=['POST'])
 def query1():
     data = request.json
@@ -31,6 +31,16 @@ def query1():
     cursor = connection.cursor()
     print("Request for q1 received")
 
+    # The query works as follows:
+    # 1. Sum the daily new_confirmed from each county to get the new_confirmed for the state.
+    # 2. Calculate the number of people currently infected on the day in the state by aggregating the new_confirmed values 
+    # for the past 2 weeks. This is because an infected person takes around 2 weeks to be free of infection.
+    # 3. Keep only the currently_infected values for the start of the week for each state.
+    # 4. Calculate the "weekly infection rate" as (currently_infected/state_population) by joining with the demographics table.
+    # 5. Calculate the aggregate weekly mobility values for each state for each week  from the per day county mobility values.
+    # 6. Join the infection and mobility values to get values for each state for each week.
+    # 7. Join with code_to_state table to get the state_name.
+    # 8. Filter by date and state_name.
     query = """WITH 
     AggregatedCountyData AS (
         SELECT 
@@ -162,7 +172,7 @@ def query1():
     return jsonify(res_list)
 
 
-# Monthly vaccination search trends vs infection rate
+# Monthly vaccination search trends vs infection rate for a state
 @app.route('/query2', methods=['POST'])
 def query2():
     data = request.json
@@ -174,6 +184,15 @@ def query2():
     cursor = connection.cursor()
     print("Request for q2 received")
 
+    # This query works as follows:
+    # 1. Get the monthly vaccination search data by aggregating the daily data for every county of the state 
+    # and computing its average.
+    # 2. Get the monthly vaccination data for each state by aggregating the daily data.
+    # 3. Calculate the monthly vaccination rate for each state using (new_persons_vaccinated/population) 
+    # by joining vaccination data with demographics table.
+    # 4. Join the vaccination search data with the vaccination rate data.
+    # 5. Join with code_to_state table to get the state_name.
+    # 6. Filter by date and state_name.
     query = """
     SELECT
         MonthlyGoogleSearches.start_of_month,
@@ -204,7 +223,7 @@ def query2():
                 VacInfo.location_key,
                 VacInfo.new_persons_vaccinated,
                 Demographics.population,
-                ROUND(VacInfo.new_persons_vaccinated/Demographics.population*100, 4) as VaccinationRate
+                ROUND((VacInfo.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
             FROM
                 (
                     SELECT
@@ -274,6 +293,15 @@ def query3():
     cursor = connection.cursor()
     print("Request for q3 received")
 
+    # This query works as follows:
+    # 1. Get daily profit percentage of the stock using ((close-open)/open)*100. Also get the sector 
+    # information of the stock by joining the snp500 table with snp500_company_info table. Create a new column denoting
+    # if the company was in profit or loss for the day based on the daily profit percentage.
+    # 2. Get the count of number of companies from each sector that are in profit and in loss for the day.
+    # 3. Calculate the percentage of companies from the sector that are in profit for the day.
+    # 4. Get aggregated data about the number of people tested per 100000 people for the day in the entire US.
+    # 5. Join the companies in profit data with the testing data.
+    # 6. Filter by date and sector.
     query = """WITH PLCount AS (
         SELECT 
             date_key, 
@@ -332,6 +360,7 @@ def query3():
         PercentageOfCompaniesInProfit
         JOIN TestingInfoAggregated ON TestingInfoAggregated.date_key = PercentageOfCompaniesInProfit.date_key
     WHERE sector IN {}
+    ORDER BY PercentageOfCompaniesInProfit.date_key, sector
     """.format(sectors_tuple)
 
     print(query)
@@ -354,7 +383,7 @@ def query3():
 
     return jsonify(res_map)
 
-# Ratio of no. of deaths vs no. of newly hospitalized patients for states 
+# Daily ratio of no. of deaths vs no. of newly hospitalized patients for states 
 # grouped into 4 categories according to no. of physicians per 100000 people.
 @app.route('/query4', methods=['POST'])
 def query4():
@@ -377,6 +406,16 @@ def query4():
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
 
+    # This query works as follows:
+    # 1. Filter and get the daily hospitalization data for US states from all the other hospitalization data.
+    # 2. The data for NY is just placeholder data. Actual data for NY is split into counties. 
+    # Subtract the NY data and add the aggregated county data to the hospitalization data to include data for NY.
+    # 3. For each state, get the number of deceased people for the day from epidemiology table by aggregating 
+    # new_deceased for all the counties of the state.
+    # 4. Calculate the ratio of deaths to hospitalized people for each state for each day.
+    # 5. Divide the states into 4 groups depending on the number of physicians.
+    # 6. Aggregate the ratio of deaths to hospitalized people for each group of states.
+    # 7. Filter by date and noOfPhysician categories.
     query = """
         WITH 
         HospitalizationsForStates AS (
@@ -510,6 +549,15 @@ def query5():
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
 
+    # How this query works:
+    # 1. Calculate the average weekly stringency_index for each state.
+    # 2. Calculate which of the 5 stringency level categories the state lies in.
+    # 3. Get the weekly deceased count per state by aggregating the daily deceased count.
+    # 4. For each state, get the mortality rate per 100000 people by joining the deceased data 
+    # with population data from demographics table.
+    # 5. Get the ruling party for each state by joining with the code_to_state table.
+    # 6. Group by the ruling party and the stringency level category.
+    # 7. Filter by date and the ruling party.
     query = """
     WITH WeeklyStringency AS (
         SELECT 
@@ -517,7 +565,7 @@ def query5():
             location_key,
             ROUND(AVG(stringency_index), 4) AS weekly_avg_stringency_index 
         FROM "AMMAR.AMJAD".government_responses 
-        WHERE location_key LIKE 'US_%'
+        WHERE location_key LIKE 'US___'
         GROUP BY TRUNC(date_key, 'IW'), location_key
     ),
     WeeklyStringencyWithCategory AS (
@@ -538,11 +586,11 @@ def query5():
     WeeklyDeceased AS (
         SELECT 
             TRUNC(date_key, 'IW') AS start_of_week,
-            SUBSTR(location_key, 1, 5) AS location_key,
+            location_key,
             SUM(new_deceased) AS weekly_avg_deceased
         FROM rgugale.US_Epidemiology
         WHERE location_key LIKE 'US___'
-        GROUP BY TRUNC(date_key, 'IW'), SUBSTR(location_key, 1, 5)
+        GROUP BY TRUNC(date_key, 'IW'), location_key
     ),
     MortalityInfo AS (
         SELECT 
