@@ -255,57 +255,104 @@ def query2():
     return jsonify(res_list)
 
 
-# Healthcare stocks vs hospitalizations - returns 34 records
-@app.route('/query3', methods=['GET'])
+# This query shows the number of people tested per 100000 for the entire US vs 
+# the percentage of companies from a sector whose stocks made a profit for the day.
+@app.route('/query3', methods=['POST'])
 def query3():
+    data = request.json
+    sectors = data.get('sectors', [])
+
+    if len(sectors) == 1:
+        sectors_tuple = "('" + sectors[0] + "')"
+    else:
+        sectors_tuple = tuple(sectors)
+
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
     print("Request for q3 received")
 
-    query = """WITH MonthlyNewCases AS (
+    query = """WITH PLCount AS (
         SELECT 
-            EXTRACT(MONTH FROM DATE_KEY) AS month,
-            EXTRACT(YEAR FROM DATE_KEY) AS year,
-            SUM(NEW_CONFIRMED) AS total_monthly_new_cases
+            date_key, 
+            sector, 
+            p_or_l, 
+            COUNT(ticker) AS noOfCompanies
+        FROM (
+            SELECT 
+                snp500.ticker,
+                date_key,
+                sector,
+                ROUND(((close - open) / open) * 100, 4) AS profit_percent,
+                CASE
+                    WHEN ROUND(((close - open) / open) * 100, 4) < 0 THEN 'Loss'
+                    WHEN ROUND(((close - open) / open) * 100, 4) >= 0 THEN 'Profit'
+                END AS p_or_l
+            FROM "AMMAR.AMJAD".snp500 
+            JOIN rgugale.snp500_company_info ON snp500.ticker = snp500_company_info.ticker
+        ) StockPriceWithSector
+        GROUP BY date_key, sector, p_or_l
+    ),
+    PercentageOfCompaniesInProfit AS (
+        SELECT 
+            date_key, 
+            sector, 
+            p_or_l,
+            noOfCompanies,
+            ROUND((noOfCompanies / (SUM(noOfCompanies) OVER (PARTITION BY date_key, sector))) * 100, 4) AS PercentOfCompaniesInProfit
+        FROM
+            PLCount
+    ),
+    TestingInfoAggregated AS (
+        SELECT 
+            date_key, 
+            ROUND(AVG(no_of_tested_per_100000), 5) AS no_of_tested_per_100000 
         FROM 
-            RGUGALE.US_EPIDEMIOLOGY
-        GROUP BY 
-            EXTRACT(MONTH FROM DATE_KEY), EXTRACT(YEAR FROM DATE_KEY)
+            (
+                SELECT 
+                    date_key,
+                    US_Epidemiology.location_key,
+                    NVL(100000 * new_tested / population, 0) AS no_of_tested_per_100000
+                FROM
+                    rgugale.US_Epidemiology 
+                    JOIN rgugale.Demographics demo ON demo.location_key = US_Epidemiology.location_key
+                WHERE
+                    US_Epidemiology.location_key LIKE 'US___' AND date_key BETWEEN :start_date AND :end_date
+            ) TestingInfo
+        GROUP BY date_key
     )
     SELECT 
-        TRUNC(TO_DATE('01-' || LPAD(CAST(M.month AS VARCHAR2(2)), 2, '0') || '-' || CAST(M.year AS VARCHAR2(4)), 'DD-MM-YYYY'), 'MONTH') AS month_year,
-        M.total_monthly_new_cases AS monthly_new_cases,
-        AVG(S.CLOSE) AS avg_stock_prices, -- Stocks price
-        AVG(H.NEW_INTENSIVE_CARE_PATIENTS) AS icu_patients
+        PercentageOfCompaniesInProfit.date_key,
+        no_of_tested_per_100000,
+        PercentOfCompaniesInProfit,
+        sector
     FROM 
-        MonthlyNewCases M
-    LEFT JOIN 
-        RGUGALE.STOCKS S ON M.month = EXTRACT(MONTH FROM S.DATE_KEY) AND M.year = EXTRACT(YEAR FROM S.DATE_KEY)
-    LEFT JOIN
-        "AMMAR.AMJAD".HOSPITALIZATIONS H ON M.month = EXTRACT(MONTH FROM H.DATE_KEY) AND M.year = EXTRACT(YEAR FROM H.DATE_KEY)
-    GROUP BY 
-        M.month, M.year, M.total_monthly_new_cases
-    ORDER BY 
-        M.year, M.month"""
+        PercentageOfCompaniesInProfit
+        JOIN TestingInfoAggregated ON TestingInfoAggregated.date_key = PercentageOfCompaniesInProfit.date_key
+    WHERE sector IN {}
+    """.format(sectors_tuple)
 
-    cursor.execute(query)
+    print(query)
+
+    cursor.execute(query, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()
 
-    res_list = []
+    res_map = {}
     for row in result:
-        data = {
-            "date": row[0],
-            "monthly_new_cases": row[1],
-            "avg_stock_prices": row[2],
-            "icu_patients": row[3]
-        }
-        res_list.append(data)
+        if str(row[0]) not in res_map:
+            res_map[str(row[0])] = {}
+            res_map[str(row[0])]["no_of_tested_people_per_100000_people"] = row[1]
+            res_map[str(row[0])]["sectorwise_percent_of_companies_in_profit"] = {}
+
+        res_map[str(row[0])]["sectorwise_percent_of_companies_in_profit"][row[3]] = row[2]        
 
     print(len(result))
     cursor.close()
     connection.close()
 
-    return jsonify(res_list)
+    return jsonify(res_map)
 
 # Ratio of no. of deaths vs no. of newly hospitalized patients for states 
 # grouped into 4 categories according to no. of physicians per 100000 people.
@@ -451,6 +498,7 @@ def query4():
 
     return jsonify(list(res_list))
 
+# Query to compare the mortality rate in democratic vs republican states based on their stringency index per week.
 @app.route('/query5', methods=['POST'])
 def query5():
     data = request.json
@@ -555,7 +603,8 @@ def total_row_count():
         count_code_to_country +
         count_code_to_state +
         count_demographics +
-        count_stocks +
+        count_snp500 +
+        count_snp500_company_info +
         count_us_epidemiology +
         count_us_mobility +
         count_government_responses +
@@ -567,7 +616,8 @@ def total_row_count():
             (SELECT COUNT(*) FROM RGUGALE.code_to_country) AS count_code_to_country,
             (SELECT COUNT(*) FROM RGUGALE.code_to_state) AS count_code_to_state,
             (SELECT COUNT(*) FROM RGUGALE.demographics) AS count_demographics,
-            (SELECT COUNT(*) FROM RGUGALE.stocks) AS count_stocks,
+            (SELECT COUNT(*) FROM "AMMAR.AMJAD".snp500) AS count_snp500,
+            (SELECT COUNT(*) FROM RGUGALE.snp500_company_info) AS count_snp500_company_info,
             (SELECT COUNT(*) FROM RGUGALE.us_epidemiology) AS count_us_epidemiology,
             (SELECT COUNT(*) FROM "AMMAR.AMJAD".us_mobility) AS count_us_mobility,
             (SELECT COUNT(*) FROM "AMMAR.AMJAD".government_responses) AS count_government_responses,
