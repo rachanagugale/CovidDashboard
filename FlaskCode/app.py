@@ -537,7 +537,7 @@ def query4():
 
     return jsonify(list(res_list))
 
-# Query to compare the mortality rate in democratic vs republican states based on their stringency index per week.
+# Query to compare the mortality rate in democratic vs republican states based on their stringency index per month.
 @app.route('/query5', methods=['POST'])
 def query5():
     data = request.json
@@ -550,79 +550,79 @@ def query5():
     cursor = connection.cursor()
 
     # How this query works:
-    # 1. Calculate the average weekly stringency_index for each state.
+    # 1. Calculate the average monthly stringency_index for each state.
     # 2. Calculate which of the 5 stringency level categories the state lies in.
-    # 3. Get the number of states that belong to a stringency level category for each week for each party.
-    # 3. Get the weekly deceased count per state by aggregating the daily deceased count.
-    # 4. For each party, get the aggregate average mortality rate per 100000 people for the week across all the states where it rules
+    # 3. Get the number of states that belong to a stringency level category for each month for each party.
+    # 3. Get the monthly deceased count per state by aggregating the daily deceased count.
+    # 4. For each party, get the aggregate average mortality rate per 100000 people for the month across all the states where it rules
     # by joining the deceased data with population data from demographics table.
     # 6. Join the stringency and mortality information.
     # 7. Filter by date and the ruling party.
     query = """
-    WITH WeeklyStringency AS (
+    WITH MonthlyStringency AS (
         SELECT 
-            TRUNC(date_key, 'IW') AS start_of_week,
+            TRUNC(date_key, 'MM') AS start_of_month,
             location_key,
-            ROUND(AVG(stringency_index), 4) AS weekly_avg_stringency_index 
+            ROUND(AVG(stringency_index), 4) AS monthly_avg_stringency_index 
         FROM "AMMAR.AMJAD".government_responses 
         WHERE location_key LIKE 'US___'
-        GROUP BY TRUNC(date_key, 'IW'), location_key
+        GROUP BY TRUNC(date_key, 'MM'), location_key
     ),
-    WeeklyStringencyWithCategory AS (
+    MonthlyStringencyWithCategory AS (
         SELECT
-            start_of_week,
+            start_of_month,
             location_key,
-            weekly_avg_stringency_index,
+            monthly_avg_stringency_index,
             CASE
-                WHEN weekly_avg_stringency_index < 20 THEN '0-19'
-                WHEN weekly_avg_stringency_index >= 20 AND weekly_avg_stringency_index < 40 THEN '20-39'
-                WHEN weekly_avg_stringency_index >= 40 AND weekly_avg_stringency_index < 60 THEN '40-59'
-                WHEN weekly_avg_stringency_index >= 60 AND weekly_avg_stringency_index < 80 THEN '60-79'
-                WHEN weekly_avg_stringency_index >= 80 AND weekly_avg_stringency_index < 100 THEN '80-100'
+                WHEN monthly_avg_stringency_index < 20 THEN '0-19'
+                WHEN monthly_avg_stringency_index >= 20 AND monthly_avg_stringency_index < 40 THEN '20-39'
+                WHEN monthly_avg_stringency_index >= 40 AND monthly_avg_stringency_index < 60 THEN '40-59'
+                WHEN monthly_avg_stringency_index >= 60 AND monthly_avg_stringency_index < 80 THEN '60-79'
+                WHEN monthly_avg_stringency_index >= 80 AND monthly_avg_stringency_index < 100 THEN '80-100'
                 ELSE 'Unknown'
             END AS stringency_category
-        FROM WeeklyStringency
+        FROM MonthlyStringency
     ),
     NoOfStatesInEachStringencyCategoryPerParty AS (
         SELECT 
-            start_of_week, 
+            start_of_month, 
             ruling_party, 
             stringency_category,
-            COUNT(WeeklyStringencyWithCategory.location_key) AS noOfStates
-        FROM WeeklyStringencyWithCategory
-        JOIN rgugale.code_to_state ON code_to_state.state_code = WeeklyStringencyWithCategory.location_key
-        GROUP BY start_of_week, ruling_party, stringency_category
+            COUNT(MonthlyStringencyWithCategory.location_key) AS noOfStates
+        FROM MonthlyStringencyWithCategory
+        JOIN rgugale.code_to_state ON code_to_state.state_code = MonthlyStringencyWithCategory.location_key
+        GROUP BY start_of_month, ruling_party, stringency_category
     ),
-    WeeklyDeceasedPerState AS (
+    MonthlyDeceasedPerState AS (
         SELECT 
-            TRUNC(date_key, 'IW') AS start_of_week,
+            TRUNC(date_key, 'MM') AS start_of_month,
             location_key,
-            SUM(new_deceased) AS weekly_avg_deceased
+            SUM(new_deceased) AS monthly_avg_deceased
         FROM rgugale.US_Epidemiology
         WHERE location_key LIKE 'US___'
-        GROUP BY TRUNC(date_key, 'IW'), location_key
+        GROUP BY TRUNC(date_key, 'MM'), location_key
     ),
-    MortalityRatePerWeekPerRulingParty AS (
+    MortalityRatePerMonthPerRulingParty AS (
         SELECT 
-            start_of_week,
+            start_of_month,
             ruling_party,
-            AVG(GREATEST(ROUND(weekly_avg_deceased * 100000 / population, 8), 0)) AS mortality_rate_100000 --mortality rate for every 1000 people
+            AVG(GREATEST(ROUND(monthly_avg_deceased * 100000 / population, 8), 0)) AS mortality_rate_100000 --mortality rate for every 1000 people
         FROM
-            WeeklyDeceasedPerState 
-            JOIN rgugale.Demographics ON WeeklyDeceasedPerState.location_key = Demographics.location_key
+            MonthlyDeceasedPerState 
+            JOIN rgugale.Demographics ON MonthlyDeceasedPerState.location_key = Demographics.location_key
             JOIN rgugale.code_to_state ON code_to_state.state_code = Demographics.location_key
-        GROUP BY start_of_week, ruling_party
+        GROUP BY start_of_month, ruling_party
     )
     SELECT
-        mor.start_of_week,
+        mor.start_of_month,
         stringency_category,
         noOfStates,
         ROUND(mortality_rate_100000, 8) AS mortality_rate_100000
     FROM
         NoOfStatesInEachStringencyCategoryPerParty str_cat
-    JOIN MortalityRatePerWeekPerRulingParty mor ON mor.start_of_week = str_cat.start_of_week AND mor.ruling_party = str_cat.ruling_party
-    WHERE mor.start_of_week BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
-    ORDER BY mor.start_of_week, mor.ruling_party, stringency_category
+    JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = str_cat.start_of_month AND mor.ruling_party = str_cat.ruling_party
+    WHERE mor.start_of_month BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
+    ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
     """
 
     cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
