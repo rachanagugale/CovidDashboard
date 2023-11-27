@@ -517,23 +517,20 @@ def query5():
 
     cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
     result = cursor.fetchall()
+    res_hash_map = {}
 
-    res_list = []
     for row in result:
-        data = {
-            "date": row[0],
-            "ruling_party": row[1],
-            "stringency_category": row[2],
-            "no_of_states": row[3],
-            "mortality_rate_per_100000": row[4]
-        }
-        res_list.append(data)
+        stringency_key = row[2]
+        if stringency_key not in res_hash_map:
+            res_hash_map[stringency_key] = {}
 
-    print(len(result))
+        res_hash_map[stringency_key][str(row[0])] = {"count": row[3], "mortality_rate_per_100000": row[4]}
+
+    print(len(res_hash_map))
     cursor.close()
     connection.close()
 
-    return jsonify(res_list)
+    return jsonify(res_hash_map)
 
 # Query to get the total number of rows in the database
 @app.route('/total_row_count', methods=['GET'])
