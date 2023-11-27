@@ -3,6 +3,7 @@ import os
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 from flask_cors import CORS
+from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
@@ -433,19 +434,22 @@ def query4():
     result = cursor.fetchall()
 
     res_list = []
+    date_mapping = defaultdict(lambda: {})
     for row in result:
-        data = {
-            "date": row[0],
-            "physician_category": row[1],
-            "avg_ratio_of_deaths_to_hospitalized_people": row[2]
-        }
-        res_list.append(data)
+        if row[0] not in date_mapping: date_mapping[row[0]] = { "date": row[0] }
+        date_mapping[row[0]][row[1]] = row[2]
+        # data = {
+        #     "date": row[0],
+        #     "physician_category": row[1],
+        #     "avg_ratio_of_deaths_to_hospitalized_people": row[2]
+        # }
 
+    res_list = date_mapping.values()
     print(len(result))
     cursor.close()
     connection.close()
 
-    return jsonify(res_list)
+    return jsonify(list(res_list))
 
 @app.route('/query5', methods=['POST'])
 def query5():
@@ -520,17 +524,25 @@ def query5():
     res_hash_map = {}
 
     for row in result:
+        date = row[0]
         stringency_key = row[2]
-        if stringency_key not in res_hash_map:
-            res_hash_map[stringency_key] = {}
+        count = row[3]
+        mortality_rate_per_100000 = row[4]
 
-        res_hash_map[stringency_key][str(row[0])] = {"count": row[3], "mortality_rate_per_100000": row[4]}
+        if date not in res_hash_map: res_hash_map[date] = { 'date': date }
+        res_hash_map[date][stringency_key] = mortality_rate_per_100000
+        res_hash_map[date]['count'] = count
+
+        # if stringency_key not in res_hash_map:
+        #     res_hash_map[stringency_key] = {}
+
+        # res_hash_map[stringency_key][str(row[0])] = {"count": row[3], "mortality_rate_per_100000": row[4]}
 
     print(len(res_hash_map))
     cursor.close()
     connection.close()
 
-    return jsonify(res_hash_map)
+    return jsonify(list(res_hash_map.values()))
 
 # Query to get the total number of rows in the database
 @app.route('/total_row_count', methods=['GET'])

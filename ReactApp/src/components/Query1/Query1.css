@@ -12,3 +12,7 @@
   width: 100%;
   padding: 2rem;
 }
+
+.chart canvas {
+  max-height: 70vh;
+}
