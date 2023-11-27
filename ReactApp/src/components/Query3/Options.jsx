@@ -1,10 +1,3 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
@@ -63,78 +56,10 @@ function DatePickerWithRange({ className, date, setDate }) {
   );
 }
 
-const states = [
-  "California",
-  "Rhode Island",
-  "Tennessee",
-  "New York",
-  "South Dakota",
-  "Arizona",
-  "Pennsylvania",
-  "Texas",
-  "Virginia",
-  "Kansas",
-  "Montana",
-  "Oregon",
-  "Washington",
-  "Wisconsin",
-  "Connecticut",
-  "Minnesota",
-  "South Carolina",
-  "Iowa",
-  "Massachusetts",
-  "West Virginia",
-  "Nevada",
-  "Arkansas",
-  "Hawaii",
-  "Wyoming",
-  "Colorado",
-  "Michigan",
-  "District of Columbia",
-  "Idaho",
-  "Ohio",
-  "North Carolina",
-  "Illinois",
-  "Oklahoma",
-  "Florida",
-  "Kentucky",
-  "Louisiana",
-  "Alabama",
-  "Alaska",
-  "Georgia",
-  "Maryland",
-  "New Jersey",
-  "New Hampshire",
-  "North Dakota",
-  "New Mexico",
-  "Delaware",
-  "Indiana",
-  "Maine",
-  "Nebraska",
-  "Mississippi",
-  "Utah",
-  "Vermont",
-  "Missouri",
-];
-
-export default function Options({ state, setState, dates, setDate }) {
+export default function Options({ dates, setDate }) {
   return (
     <div className="options">
       <h2>Options</h2>
-
-      <p className="label">State</p>
-      <Select onValueChange={setState} defaultValue={state}>
-        <SelectTrigger>
-          <SelectValue placeholder="State" />
-        </SelectTrigger>
-        <SelectContent>
-          {states.map((state) => (
-            <SelectItem key={state} value={state}>
-              {state}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
 
       <p className="label">Date Range</p>
       <DatePickerWithRange date={dates} setDate={setDate} />

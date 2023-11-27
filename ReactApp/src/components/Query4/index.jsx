@@ -11,6 +11,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { format } from "date-fns";
 import _ from "lodash";
 
 import Loading from "@/components/Loading";
@@ -28,6 +29,9 @@ ChartJS.register(
   Legend,
   Colors
 );
+
+ChartJS.defaults.font.size = 14; // Set the font size to 16px
+ChartJS.defaults.color = "rgb(148, 163, 184)"; // Set the font color to white
 
 const options = {
   responsive: true,
@@ -60,7 +64,7 @@ const formatData = (data) => {
   const dates = _.map(data, ({ date }) => new Date(date).toDateString());
   const [low, decent, good, very_good] = _.map(
     ["Low (<200)", "Decent (200-300)", "Good (300-400)", "Very good (>400)"],
-    (attr) => _.map(data, (row) => _.get(row, attr, null))
+    (attr) => _.map(data, (row) => _.get(row, attr, 0))
   );
 
   const datasets = [
@@ -85,8 +89,8 @@ export default function Query4() {
   const [data, setData] = useState(null);
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    start_date: "01-JAN-2020",
-    end_date: "31-DEC-2020",
+    from: new Date("01-JAN-2020"),
+    to: new Date("31-DEC-2020"),
     physician_categories: [
       "Low (<200)",
       "Decent (200-300)",
@@ -96,15 +100,20 @@ export default function Query4() {
   });
 
   useEffect(() => {
-    setLoading(true);
-    getQuery4(form.start_date, form.end_date)
-      .then((data) => {
-        const formattedData = formatData(data);
-        setData(formattedData);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    if (form.from && form.to) {
+      setLoading(true);
+      getQuery4(
+        format(form.from, "dd-MMM-yy").toUpperCase(),
+        format(form.to, "dd-MMM-yy").toUpperCase()
+      )
+        .then((data) => {
+          const formattedData = formatData(data);
+          setData(formattedData);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
   }, [form]);
 
   if (!data) return <Loading />;
@@ -112,10 +121,8 @@ export default function Query4() {
   return (
     <div className="query-4">
       <Options
-        dates={_.pick(form, ["start_date", "end_date"])}
-        setDate={(start_date, end_date) =>
-          setForm({ ...form, start_date, end_date })
-        }
+        dates={_.pick(form, ["from", "to"])}
+        setDate={(dates) => setForm({ ...form, ...dates })}
       />
 
       <div className="chart">
@@ -123,7 +130,7 @@ export default function Query4() {
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
             <h2 style={{ marginBottom: "10px" }}>Query 4 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-20">
+            <p className="text-sm text-muted-foreground mb-12">
               Ratio of number of deaths among hospitalized patients to the
               number of newly hospitalized patients for US states grouped into 4
               categories according to the number of physicians per 100000

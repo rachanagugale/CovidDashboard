@@ -20,18 +20,7 @@ import {
 
 import "./Options.css";
 
-function DatePickerWithRange({ className, dates, setDate }) {
-  const date = {
-    from: new Date(dates.start_date),
-    to: new Date(dates.end_date),
-  };
-
-  const setDateHandler = ({ from, to }) => {
-    const start_date = format(from, "dd-MMM-yy").toUpperCase();
-    const end_date = format(to, "dd-MMM-yy").toUpperCase();
-    setDate(start_date, end_date);
-  };
-
+function DatePickerWithRange({ className, date, setDate }) {
   return (
     <div className={cn("grid gap-2", className)}>
       <Popover>
@@ -65,7 +54,7 @@ function DatePickerWithRange({ className, dates, setDate }) {
             mode="range"
             defaultMonth={date?.from}
             selected={date}
-            onSelect={setDateHandler}
+            onSelect={setDate}
             numberOfMonths={2}
           />
         </PopoverContent>
@@ -74,67 +63,13 @@ function DatePickerWithRange({ className, dates, setDate }) {
   );
 }
 
-const states = [
-  "California",
-  "Rhode Island",
-  "Tennessee",
-  "New York",
-  "South Dakota",
-  "Arizona",
-  "Pennsylvania",
-  "Texas",
-  "Virginia",
-  "Kansas",
-  "Montana",
-  "Oregon",
-  "Washington",
-  "Wisconsin",
-  "Connecticut",
-  "Minnesota",
-  "South Carolina",
-  "Iowa",
-  "Massachusetts",
-  "West Virginia",
-  "Nevada",
-  "Arkansas",
-  "Hawaii",
-  "Wyoming",
-  "Colorado",
-  "Michigan",
-  "District of Columbia",
-  "Idaho",
-  "Ohio",
-  "North Carolina",
-  "Illinois",
-  "Oklahoma",
-  "Florida",
-  "Kentucky",
-  "Louisiana",
-  "Alabama",
-  "Alaska",
-  "Georgia",
-  "Maryland",
-  "New Jersey",
-  "New Hampshire",
-  "North Dakota",
-  "New Mexico",
-  "Delaware",
-  "Indiana",
-  "Maine",
-  "Nebraska",
-  "Mississippi",
-  "Utah",
-  "Vermont",
-  "Missouri",
-];
-
 export default function Options({ dates, setDate }) {
   return (
     <div className="options">
       <h2>Options</h2>
 
       <p className="label">Date Range</p>
-      <DatePickerWithRange dates={dates} setDate={setDate} />
+      <DatePickerWithRange date={dates} setDate={setDate} />
 
       <Alert style={{ position: "fixed", bottom: "30px", width: "295px" }}>
         <AlertTitle

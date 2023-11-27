@@ -11,6 +11,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { format } from "date-fns";
 import _ from "lodash";
 
 import Loading from "@/components/Loading";
@@ -28,6 +29,9 @@ ChartJS.register(
   Legend,
   Colors
 );
+
+ChartJS.defaults.font.size = 14; // Set the font size to 16px
+ChartJS.defaults.color = "rgb(148, 163, 184)"; // Set the font color to white
 
 const options = {
   responsive: true,
@@ -126,20 +130,26 @@ export default function Query2() {
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
     state: "Florida",
-    start_date: "11-FEB-21",
-    end_date: "11-DEC-21",
+    from: new Date("11-FEB-21"),
+    to: new Date("11-DEC-21"),
   });
 
   useEffect(() => {
-    setLoading(true);
-    getQuery2(form.state, form.start_date, form.end_date)
-      .then((data) => {
-        const formattedData = formatData(data);
-        setData(formattedData);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    if (form.from && form.to) {
+      setLoading(true);
+      getQuery2(
+        form.state,
+        format(form.from, "dd-MMM-yy").toUpperCase(),
+        format(form.to, "dd-MMM-yy").toUpperCase()
+      )
+        .then((data) => {
+          const formattedData = formatData(data);
+          setData(formattedData);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
   }, [form]);
 
   if (!data) return <Loading />;
@@ -149,10 +159,8 @@ export default function Query2() {
       <Options
         state={form.state}
         setState={(state) => setForm({ ...form, state })}
-        dates={_.pick(form, ["start_date", "end_date"])}
-        setDate={(start_date, end_date) =>
-          setForm({ ...form, start_date, end_date })
-        }
+        dates={_.pick(form, ["from", "to"])}
+        setDate={(dates) => setForm({ ...form, ...dates })}
       />
 
       <div className="chart">
@@ -160,7 +168,7 @@ export default function Query2() {
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
             <h2 style={{ marginBottom: "10px" }}>Query 2 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-20">
+            <p className="text-sm text-muted-foreground mb-12">
               Helps in understanding of the dynamics surrounding vaccination
               efforts. Monitoring "general_vaccine_interest" helps gauge overall
               public awareness, while "vaccination_intent_interest" indicates

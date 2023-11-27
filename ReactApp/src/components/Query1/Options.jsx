@@ -17,21 +17,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import _ from "lodash";
 
 import "./Options.css";
 
-function DatePickerWithRange({ className, dates, setDate }) {
-  const date = {
-    from: new Date(dates.start_date),
-    to: new Date(dates.end_date),
-  };
-
-  const setDateHandler = ({ from, to }) => {
-    const start_date = format(from, "dd-MMM-yy").toUpperCase();
-    const end_date = format(to, "dd-MMM-yy").toUpperCase();
-    setDate(start_date, end_date);
-  };
-
+function DatePickerWithRange({ className, date, setDate }) {
   return (
     <div className={cn("grid gap-2", className)}>
       <Popover>
@@ -65,7 +55,7 @@ function DatePickerWithRange({ className, dates, setDate }) {
             mode="range"
             defaultMonth={date?.from}
             selected={date}
-            onSelect={setDateHandler}
+            onSelect={setDate}
             numberOfMonths={2}
           />
         </PopoverContent>
@@ -148,7 +138,7 @@ export default function Options({ state, setState, dates, setDate }) {
       </Select>
 
       <p className="label">Date Range</p>
-      <DatePickerWithRange dates={dates} setDate={setDate} />
+      <DatePickerWithRange date={dates} setDate={setDate} />
 
       <Alert style={{ position: "fixed", bottom: "30px", width: "295px" }}>
         <AlertTitle
