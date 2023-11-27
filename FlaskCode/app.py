@@ -3,7 +3,6 @@ import os
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 from flask_cors import CORS
-from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
@@ -18,7 +17,7 @@ dsn = cx_Oracle.makedsn('oracle.cise.ufl.edu', '1521', service_name='orcl')
 db_username = DB_USERNAME
 db_password = DB_PASSWORD
 
-# Weekly infection rate vs mobility for a state
+# Weekly infection rate vs mobility
 @app.route('/query1', methods=['POST'])
 def query1():
     data = request.json
@@ -31,16 +30,6 @@ def query1():
     cursor = connection.cursor()
     print("Request for q1 received")
 
-    # The query works as follows:
-    # 1. Sum the daily new_confirmed from each county to get the new_confirmed for the state.
-    # 2. Calculate the number of people currently infected on the day in the state by aggregating the new_confirmed values 
-    # for the past 2 weeks. This is because an infected person takes around 2 weeks to be free of infection.
-    # 3. Keep only the currently_infected values for the start of the week for each state.
-    # 4. Calculate the "weekly infection rate" as (currently_infected/state_population) by joining with the demographics table.
-    # 5. Calculate the aggregate weekly mobility values for each state for each week  from the per day county mobility values.
-    # 6. Join the infection and mobility values to get values for each state for each week.
-    # 7. Join with code_to_state table to get the state_name.
-    # 8. Filter by date and state_name.
     query = """WITH 
     AggregatedCountyData AS (
         SELECT 
@@ -101,7 +90,7 @@ def query1():
             SUBSTR(location_key, 1, 5)
     )
     SELECT
-        mobi.start_of_week,
+        TO_CHAR(TRUNC(mobi.start_of_week), 'DD-MON-YYYY'),
         cts.state_name,
         InfectionRatePerStatePerWeek.InfectionRatePerWeek,
         AvgMobilityRetailAndRecreation,
@@ -172,7 +161,7 @@ def query1():
     return jsonify(res_list)
 
 
-# Monthly vaccination search trends vs infection rate for a state
+# Monthly vaccination search trends vs infection rate
 @app.route('/query2', methods=['POST'])
 def query2():
     data = request.json
@@ -184,18 +173,9 @@ def query2():
     cursor = connection.cursor()
     print("Request for q2 received")
 
-    # This query works as follows:
-    # 1. Get the monthly vaccination search data by aggregating the daily data for every county of the state 
-    # and computing its average.
-    # 2. Get the monthly vaccination data for each state by aggregating the daily data.
-    # 3. Calculate the monthly vaccination rate for each state using (new_persons_vaccinated/population) 
-    # by joining vaccination data with demographics table.
-    # 4. Join the vaccination search data with the vaccination rate data.
-    # 5. Join with code_to_state table to get the state_name.
-    # 6. Filter by date and state_name.
     query = """
     SELECT
-        MonthlyGoogleSearches.start_of_month,
+        TO_CHAR(TRUNC(MonthlyGoogleSearches.start_of_month), 'MON-YY'),
         cts.state_name,
         MonthlyGoogleSearches.avg_monthly_sni_covid19_vaccination,
         MonthlyGoogleSearches.avg_monthly_sni_vaccination_intent,
@@ -223,7 +203,7 @@ def query2():
                 VacInfo.location_key,
                 VacInfo.new_persons_vaccinated,
                 Demographics.population,
-                ROUND((VacInfo.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
+                ROUND(VacInfo.new_persons_vaccinated/Demographics.population*100, 4) as VaccinationRate
             FROM
                 (
                     SELECT
@@ -239,7 +219,7 @@ def query2():
                         TRUNC(date_key, 'MM'), location_key -- Aggregation on date. No aggregation on county data as suitable county data is not available. Directly used the state data.
                 ) VacInfo
             JOIN
-                "RGUGALE".Demographics ON VacInfo.location_key = Demographics.location_key
+                Demographics ON VacInfo.location_key = Demographics.location_key
         ) MonthlyVacRate
     ON MonthlyGoogleSearches.start_of_month = MonthlyVacRate.start_of_month
         AND MonthlyGoogleSearches.location_key = MonthlyVacRate.location_key
@@ -274,426 +254,138 @@ def query2():
     return jsonify(res_list)
 
 
-# This query shows the number of people tested per 100000 for the entire US vs 
-# the percentage of companies from a sector whose stocks made a profit for the day.
-@app.route('/query3', methods=['POST'])
+# Healthcare stocks vs hospitalizations - returns 34 records
+@app.route('/query3', methods=['GET'])
 def query3():
-    data = request.json
-    sectors = data.get('sectors', [])
-
-    if len(sectors) == 1:
-        sectors_tuple = "('" + sectors[0] + "')"
-    else:
-        sectors_tuple = tuple(sectors)
-
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
     print("Request for q3 received")
 
-    # This query works as follows:
-    # 1. Get daily profit percentage of the stock using ((close-open)/open)*100. Also get the sector 
-    # information of the stock by joining the snp500 table with snp500_company_info table. Create a new column denoting
-    # if the company was in profit or loss for the day based on the daily profit percentage.
-    # 2. Get the count of number of companies from each sector that are in profit and in loss for the day.
-    # 3. Calculate the percentage of companies from the sector that are in profit for the day.
-    # 4. Get aggregated data about the number of people tested per 100000 people for the day in the entire US.
-    # 5. Join the companies in profit data with the testing data.
-    # 6. Filter by date and sector.
-    query = """WITH PLCount AS (
+    query = """WITH MonthlyNewCases AS (
         SELECT 
-            date_key, 
-            sector, 
-            p_or_l, 
-            COUNT(ticker) AS noOfCompanies
-        FROM (
-            SELECT 
-                snp500.ticker,
-                date_key,
-                sector,
-                ROUND(((close - open) / open) * 100, 4) AS profit_percent,
-                CASE
-                    WHEN ROUND(((close - open) / open) * 100, 4) < 0 THEN 'Loss'
-                    WHEN ROUND(((close - open) / open) * 100, 4) >= 0 THEN 'Profit'
-                END AS p_or_l
-            FROM "AMMAR.AMJAD".snp500 
-            JOIN rgugale.snp500_company_info ON snp500.ticker = snp500_company_info.ticker
-        ) StockPriceWithSector
-        GROUP BY date_key, sector, p_or_l
-    ),
-    PercentageOfCompaniesInProfit AS (
-        SELECT 
-            date_key, 
-            sector, 
-            p_or_l,
-            noOfCompanies,
-            ROUND((noOfCompanies / (SUM(noOfCompanies) OVER (PARTITION BY date_key, sector))) * 100, 4) AS PercentOfCompaniesInProfit
-        FROM
-            PLCount
-    ),
-    TestingInfoAggregated AS (
-        SELECT 
-            date_key, 
-            ROUND(AVG(no_of_tested_per_100000), 5) AS no_of_tested_per_100000 
+            EXTRACT(MONTH FROM DATE_KEY) AS month,
+            EXTRACT(YEAR FROM DATE_KEY) AS year,
+            SUM(NEW_CONFIRMED) AS total_monthly_new_cases
         FROM 
-            (
-                SELECT 
-                    date_key,
-                    US_Epidemiology.location_key,
-                    NVL(100000 * new_tested / population, 0) AS no_of_tested_per_100000
-                FROM
-                    rgugale.US_Epidemiology 
-                    JOIN rgugale.Demographics demo ON demo.location_key = US_Epidemiology.location_key
-                WHERE
-                    US_Epidemiology.location_key LIKE 'US___' AND date_key BETWEEN :start_date AND :end_date
-            ) TestingInfo
-        GROUP BY date_key
+            RGUGALE.US_EPIDEMIOLOGY
+        GROUP BY 
+            EXTRACT(MONTH FROM DATE_KEY), EXTRACT(YEAR FROM DATE_KEY)
     )
     SELECT 
-        PercentageOfCompaniesInProfit.date_key,
-        no_of_tested_per_100000,
-        PercentOfCompaniesInProfit,
-        sector
+        TRUNC(TO_DATE('01-' || LPAD(CAST(M.month AS VARCHAR2(2)), 2, '0') || '-' || CAST(M.year AS VARCHAR2(4)), 'DD-MM-YYYY'), 'MONTH') AS month_year,
+        M.total_monthly_new_cases AS monthly_new_cases,
+        AVG(S.CLOSE) AS avg_stock_prices, -- Stocks price
+        AVG(H.NEW_INTENSIVE_CARE_PATIENTS) AS icu_patients
     FROM 
-        PercentageOfCompaniesInProfit
-        JOIN TestingInfoAggregated ON TestingInfoAggregated.date_key = PercentageOfCompaniesInProfit.date_key
-    WHERE sector IN {}
-    ORDER BY PercentageOfCompaniesInProfit.date_key, sector
-    """.format(sectors_tuple)
+        MonthlyNewCases M
+    LEFT JOIN 
+        RGUGALE.STOCKS S ON M.month = EXTRACT(MONTH FROM S.DATE_KEY) AND M.year = EXTRACT(YEAR FROM S.DATE_KEY)
+    LEFT JOIN
+        "AMMAR.AMJAD".HOSPITALIZATIONS H ON M.month = EXTRACT(MONTH FROM H.DATE_KEY) AND M.year = EXTRACT(YEAR FROM H.DATE_KEY)
+    GROUP BY 
+        M.month, M.year, M.total_monthly_new_cases
+    ORDER BY 
+        M.year, M.month"""
 
-    print(query)
-
-    cursor.execute(query, start_date=start_date, end_date=end_date)
-    result = cursor.fetchall()
-
-    res_map = {}
-    for row in result:
-        if str(row[0]) not in res_map:
-            res_map[str(row[0])] = {}
-            res_map[str(row[0])]["no_of_tested_people_per_100000_people"] = row[1]
-            res_map[str(row[0])]["sectorwise_percent_of_companies_in_profit"] = {}
-
-        res_map[str(row[0])]["sectorwise_percent_of_companies_in_profit"][row[3]] = row[2]        
-
-    print(len(result))
-    cursor.close()
-    connection.close()
-
-    return jsonify(res_map)
-
-# Daily ratio of no. of deaths vs no. of newly hospitalized patients for states 
-# grouped into 4 categories according to no. of physicians per 100000 people.
-@app.route('/query4', methods=['POST'])
-def query4():
-    data = request.json
-    physician_categories = data.get('physician_categories', [])
-    print(physician_categories)
-    if len(physician_categories) == 0:
-        physician_categories = ["Low (<200)", "Decent (200-300)", "Good (300-400)", "Very good (>400)"]
-    else:
-        # tuple() adds a comma at the end for tuples with only 1 element. To avoid that, creating my own tuple.
-        if len(physician_categories) == 1:
-            physician_tuple = "('" + physician_categories[0] + "')"
-        else:
-            physician_tuple = tuple(physician_categories)
-    print(physician_tuple)
-
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-
-    connection = cx_Oracle.connect(db_username, db_password, dsn)
-    cursor = connection.cursor()
-
-    # This query works as follows:
-    # 1. Filter and get the daily hospitalization data for US states from all the other hospitalization data.
-    # 2. The data for NY is just placeholder data. Actual data for NY is split into counties. 
-    # Subtract the NY data and add the aggregated county data to the hospitalization data to include data for NY.
-    # 3. For each state, get the number of deceased people for the day from epidemiology table by aggregating 
-    # new_deceased for all the counties of the state.
-    # 4. Calculate the ratio of deaths to hospitalized people for each state for each day.
-    # 5. Divide the states into 4 groups depending on the number of physicians.
-    # 6. Aggregate the ratio of deaths to hospitalized people for each group of states.
-    # 7. Filter by date and noOfPhysician categories.
-    query = """
-        WITH 
-        HospitalizationsForStates AS (
-            (
-                SELECT 
-                    date_key,
-                    location_key,
-                    new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US___'
-            )
-            MINUS
-            -- Get rid of US_NY values as they are incomplete
-            (
-                SELECT 
-                    date_key,
-                    location_key,
-                    new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US_NY'
-            )
-            UNION
-            -- Sum up county data for NY
-            (
-                SELECT 
-                    date_key,
-                    SUBSTR(location_key, 1, 5) AS location_key,
-                    SUM(new_hospitalized_patients) AS new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US_NY_%'
-                GROUP BY
-                    date_key,
-                    SUBSTR(location_key, 1, 5)
-            )
-        ),
-        EpidemiologyForStates AS (
-            SELECT
-                date_key,
-                SUBSTR(location_key, 1, 5) AS location_key,
-                SUM(new_deceased) AS new_deceased
-            FROM
-                RGUGALE.us_epidemiology
-            WHERE 
-                location_key LIKE 'US____%' 
-            GROUP BY
-                date_key, SUBSTR(location_key, 1, 5)
-        ),
-        RatioOfDeathsToHospitalizedPeople AS (
-            SELECT
-                HospitalizationsForStates.date_key,
-                HospitalizationsForStates.location_key,
-                (new_deceased / NULLIF(new_hospitalized_patients, 0)) AS ratio_of_deaths
-            FROM
-                HospitalizationsForStates 
-            JOIN
-                EpidemiologyForStates 
-            ON 
-                HospitalizationsForStates.date_key = EpidemiologyForStates.date_key 
-                AND HospitalizationsForStates.location_key = EpidemiologyForStates.location_key
-            WHERE 
-                HospitalizationsForStates.date_key BETWEEN :start_date AND :end_date
-        ),
-        StateAndPhysicians AS (
-            SELECT 
-                location_key,
-                physicians_per_100000,
-                CASE
-                    WHEN physicians_per_100000 < 200 THEN 'Low (<200)'
-                    WHEN physicians_per_100000 >= 200 AND physicians_per_100000 < 300 THEN 'Decent (200-300)'
-                    WHEN physicians_per_100000 >= 300 AND physicians_per_100000 < 400 THEN 'Good (300-400)'
-                    WHEN physicians_per_100000 >= 400 THEN 'Very good (>400)'
-                    ELSE 'Unknown'
-                END AS physician_category
-            FROM
-                rgugale.health_stats
-            WHERE 
-                location_key LIKE 'US___'
-        )
-    SELECT 
-        RatioOfDeathsToHospitalizedPeople.date_key,
-        physician_category,
-        GREATEST(NVL(ROUND(AVG(RatioOfDeathsToHospitalizedPeople.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
-    FROM
-        RatioOfDeathsToHospitalizedPeople
-    JOIN
-        StateAndPhysicians ON RatioOfDeathsToHospitalizedPeople.location_key = StateAndPhysicians.location_key
-    JOIN
-        rgugale.code_to_state ON  code_to_state.state_code = StateAndPhysicians.location_key
-    WHERE physician_category in {}
-    GROUP BY
-        RatioOfDeathsToHospitalizedPeople.date_key, physician_category
-    ORDER BY
-        physician_category, date_key""".format(physician_tuple)
-
-    cursor.execute(query, start_date=start_date, end_date=end_date)
+    cursor.execute(query)
     result = cursor.fetchall()
 
     res_list = []
-    date_mapping = defaultdict(lambda: {})
     for row in result:
-        if row[0] not in date_mapping: date_mapping[row[0]] = { "date": row[0] }
-        date_mapping[row[0]][row[1]] = row[2]
-        # data = {
-        #     "date": row[0],
-        #     "physician_category": row[1],
-        #     "avg_ratio_of_deaths_to_hospitalized_people": row[2]
-        # }
+        data = {
+            "date": row[0],
+            "monthly_new_cases": row[1],
+            "avg_stock_prices": row[2],
+            "icu_patients": row[3]
+        }
+        res_list.append(data)
 
-    res_list = date_mapping.values()
     print(len(result))
     cursor.close()
     connection.close()
 
-    return jsonify(list(res_list))
+    return jsonify(res_list)
 
-# Query to compare the mortality rate in democratic vs republican states based on their stringency index per month.
-@app.route('/query5', methods=['POST'])
-def query5():
-    data = request.json
-    party = data.get('party')
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-    print("Request for q5 received")
 
+# Government stringency measures - returns 28k records
+@app.route('/query4', methods=['GET'])
+def query4():
     connection = cx_Oracle.connect(db_username, db_password, dsn)
     cursor = connection.cursor()
 
-    # How this query works:
-    # 1. Calculate the average monthly stringency_index for each state.
-    # 2. Calculate which of the 5 stringency level categories the state lies in.
-    # 3. Get the number of states that belong to a stringency level category for each month for each party.
-    # 3. Get the monthly deceased count per state by aggregating the daily deceased count.
-    # 4. For each party, get the aggregate average mortality rate per 100000 people for the month across all the states where it rules
-    # by joining the deceased data with population data from demographics table.
-    # 6. Join the stringency and mortality information.
-    # 7. Filter by date and the ruling party.
-    query = """
-    WITH MonthlyStringency AS (
+    query = """WITH VaccinationRate AS (
         SELECT 
-            TRUNC(date_key, 'MM') AS start_of_month,
+            date_key,
             location_key,
-            ROUND(AVG(stringency_index), 4) AS monthly_avg_stringency_index 
-        FROM "AMMAR.AMJAD".government_responses 
-        WHERE location_key LIKE 'US___'
-        GROUP BY TRUNC(date_key, 'MM'), location_key
-    ),
-    MonthlyStringencyWithCategory AS (
-        SELECT
-            start_of_month,
-            location_key,
-            monthly_avg_stringency_index,
-            CASE
-                WHEN monthly_avg_stringency_index < 20 THEN '0-19'
-                WHEN monthly_avg_stringency_index >= 20 AND monthly_avg_stringency_index < 40 THEN '20-39'
-                WHEN monthly_avg_stringency_index >= 40 AND monthly_avg_stringency_index < 60 THEN '40-59'
-                WHEN monthly_avg_stringency_index >= 60 AND monthly_avg_stringency_index < 80 THEN '60-79'
-                WHEN monthly_avg_stringency_index >= 80 AND monthly_avg_stringency_index < 100 THEN '80-100'
-                ELSE 'Unknown'
-            END AS stringency_category
-        FROM MonthlyStringency
-    ),
-    NoOfStatesInEachStringencyCategoryPerParty AS (
-        SELECT 
-            start_of_month, 
-            ruling_party, 
-            stringency_category,
-            COUNT(MonthlyStringencyWithCategory.location_key) AS noOfStates
-        FROM MonthlyStringencyWithCategory
-        JOIN rgugale.code_to_state ON code_to_state.state_code = MonthlyStringencyWithCategory.location_key
-        GROUP BY start_of_month, ruling_party, stringency_category
-    ),
-    MonthlyDeceasedPerState AS (
-        SELECT 
-            TRUNC(date_key, 'MM') AS start_of_month,
-            location_key,
-            SUM(new_deceased) AS monthly_avg_deceased
-        FROM rgugale.US_Epidemiology
-        WHERE location_key LIKE 'US___'
-        GROUP BY TRUNC(date_key, 'MM'), location_key
-    ),
-    MortalityRatePerMonthPerRulingParty AS (
-        SELECT 
-            start_of_month,
-            ruling_party,
-            AVG(GREATEST(ROUND(monthly_avg_deceased * 100000 / population, 8), 0)) AS mortality_rate_100000 --mortality rate for every 1000 people
+            SUM(new_persons_vaccinated) OVER (PARTITION BY location_key ORDER BY date_key ASC) AS rolling_sum_vaccinated,
+            AVG(new_persons_vaccinated) OVER (PARTITION BY location_key ORDER BY date_key ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Weekly_day_avg_vaccinated
         FROM
-            MonthlyDeceasedPerState 
-            JOIN rgugale.Demographics ON MonthlyDeceasedPerState.location_key = Demographics.location_key
-            JOIN rgugale.code_to_state ON code_to_state.state_code = Demographics.location_key
-        GROUP BY start_of_month, ruling_party
+            RGUGALE.US_VACCINATIONS
+    ),
+    StringencyMeasures AS (
+        SELECT 
+            date_key,
+            location_key,
+            AVG(stringency_index) OVER (PARTITION BY location_key ORDER BY date_key ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Weekly_day_avg_stringency
+        FROM 
+            "AMMAR.AMJAD".GOVERNMENT_RESPONSES
     )
-    SELECT
-        mor.start_of_month,
-        stringency_category,
-        noOfStates,
-        ROUND(mortality_rate_100000, 8) AS mortality_rate_100000
-    FROM
-        NoOfStatesInEachStringencyCategoryPerParty str_cat
-    JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = str_cat.start_of_month AND mor.ruling_party = str_cat.ruling_party
-    WHERE mor.start_of_month BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
-    ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
-    """
-
-    cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
-    result = cursor.fetchall()
-
-    res_map = {}
-    for row in result:
-        if str(row[0]) not in res_map:
-            res_map[str(row[0])] = {}
-            res_map[str(row[0])]["mortality_rate_100000"] = row[3]
-            res_map[str(row[0])]["stringency_categories"] = {
-                "0-19": 0,
-                "20-39": 0,
-                "40-59": 0,
-                "60-79": 0,
-                "80-100": 0
-            }
-
-        res_map[str(row[0])]["stringency_categories"][row[1]] = row[2]    
-
-    print(len(res_map))
-    cursor.close()
-    connection.close()
-
-    return jsonify(res_map)
-
-# Query to get the total number of rows in the database
-@app.route('/total_row_count', methods=['GET'])
-def total_row_count():
-    connection = cx_Oracle.connect(db_username, db_password, dsn)
-    cursor = connection.cursor()
-
-    query = """
-    SELECT
-        count_code_to_country +
-        count_code_to_state +
-        count_demographics +
-        count_snp500 +
-        count_snp500_company_info +
-        count_us_epidemiology +
-        count_us_mobility +
-        count_government_responses +
-        count_hospitalizations +
-        count_vaccination_search +
-        count_us_vaccinations AS total_count
-    FROM (
-        SELECT
-            (SELECT COUNT(*) FROM RGUGALE.code_to_country) AS count_code_to_country,
-            (SELECT COUNT(*) FROM RGUGALE.code_to_state) AS count_code_to_state,
-            (SELECT COUNT(*) FROM RGUGALE.demographics) AS count_demographics,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".snp500) AS count_snp500,
-            (SELECT COUNT(*) FROM RGUGALE.snp500_company_info) AS count_snp500_company_info,
-            (SELECT COUNT(*) FROM RGUGALE.us_epidemiology) AS count_us_epidemiology,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".us_mobility) AS count_us_mobility,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".government_responses) AS count_government_responses,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".hospitalizations) AS count_hospitalizations,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".vaccination_search) AS count_vaccination_search,
-            (SELECT COUNT(*) FROM "AMMAR.AMJAD".us_vaccinations) AS count_us_vaccinations
-        FROM dual
-    )
-    """
+    SELECT 
+        V.date_key,
+        V.location_key,
+        V.rolling_sum_vaccinated,
+        V.Weekly_day_avg_vaccinated,
+        S.Weekly_day_avg_stringency,
+        G.stay_at_home_requirements,
+        G.public_transport_closing,
+        G.school_closing,
+        G.workplace_closing,
+        G.cancel_public_events,
+        G.restrictions_on_gatherings,
+        G.restrictions_on_internal_movement,
+        G.international_travel_controls
+    FROM 
+        VaccinationRate V
+    INNER JOIN 
+        StringencyMeasures S
+    ON 
+        V.date_key = S.date_key AND V.location_key = S.location_key
+    INNER JOIN 
+        "AMMAR.AMJAD".GOVERNMENT_RESPONSES G
+    ON 
+        V.date_key = G.date_key AND V.location_key = G.location_key
+    WHERE 
+        V.date_key >= TO_DATE('2020-01-01', 'YYYY-MM-DD') AND V.date_key <= TO_DATE('2022-12-31', 'YYYY-MM-DD')
+    ORDER BY 
+        V.date_key ASC, V.location_key ASC"""
 
     cursor.execute(query)
-    result = cursor.fetchone()
+    result = cursor.fetchall()
+
+    res_list = []
+    for row in result:
+        data = {
+            "date": row[0],
+            "location_key": row[1],
+            "rolling_sum_vaccinated": row[2],
+            "weekly_day_avg_vaccinated": row[3],
+            "weekly_day_avg_stringency": row[4],
+            "stay_at_home_requirements": row[5],
+            "public_transport_closing": row[6],
+            "school_closing": row[7],
+            "workplace_closing": row[8],
+            "cancel_public_events": row[9],
+            "restrictions_on_gatherings": row[10],
+            "restrictions_on_internal_movement": row[11],
+            "international_travel_controls": row[12]
+        }
+        res_list.append(data)
+
+    print(len(result))
     cursor.close()
     connection.close()
-    total_count_json = {
-        "total_count": result[0]
-    }
 
-    return jsonify(total_count_json)
+    return jsonify(res_list)
 
 if __name__ == '__main__':
     app.run(debug=True)
