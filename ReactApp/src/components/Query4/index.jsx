@@ -16,6 +16,7 @@ import _ from "lodash";
 
 import Loading from "@/components/Loading";
 import Options from "./Options";
+import Notes from "./Notes";
 import { getQuery4 } from "../../helpers/api";
 import "./Query4.css";
 
@@ -129,13 +130,19 @@ export default function Query4() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 4 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-12">
-              Ratio of number of deaths among hospitalized patients to the
-              number of newly hospitalized patients for US states grouped into 4
-              categories according to the number of physicians per 100000
-              people.
-            </p>
+            <div className="flex flex-row">
+              <div style={{ width: "100%", textAlign: "left" }}>
+                <h2 style={{ marginBottom: "10px" }}>Query 4 Utility</h2>
+                <p className="text-sm text-muted-foreground mb-12">
+                  Ratio of number of deaths among hospitalized patients to the
+                  number of newly hospitalized patients for US states grouped
+                  into 4 categories according to the number of physicians per
+                  100000 people.
+                </p>
+              </div>
+              <Notes />
+            </div>
+
             <Line options={options} data={data} />
           </div>
         )}

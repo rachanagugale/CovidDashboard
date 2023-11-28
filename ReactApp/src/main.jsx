@@ -5,6 +5,7 @@ import "./index.css";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import NavigationBar from "@/components/NavigationBar";
+import Home from "@/components/Home";
 import Query1 from "@/components/Query1";
 import Query2 from "@/components/Query2";
 import Query3 from "@/components/Query3";
@@ -15,7 +16,7 @@ const routes = [
   {
     label: "Home",
     path: "/",
-    element: <>Hello World</>,
+    element: <Home />,
   },
   {
     label: "Query 1",

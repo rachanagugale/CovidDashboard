@@ -10,6 +10,18 @@ nav {
   border-bottom: 1px solid rgb(97, 97, 97);
 }
 
+.refresh-count-button {
+  background-color: #030817;
+  border: #FFF;
+  color: #FFF;
+  transition: .3s ease-in-out;
+}
+
+.refresh-count-button:hover {
+  background-color: #FFF;
+  color: #030817;
+}
+
 #logo {
   border-radius: 10px;
   display: grid;
