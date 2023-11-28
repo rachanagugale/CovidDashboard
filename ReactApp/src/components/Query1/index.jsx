@@ -45,7 +45,7 @@ const options = {
     x: {
       title: {
         display: true,
-        text: "Time",
+        text: "Time (week)",
       },
     },
     y: {

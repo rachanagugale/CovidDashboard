@@ -122,7 +122,7 @@ def query1():
     WHERE
         irpspw.state_code = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state) 
         AND mobi.start_of_week BETWEEN :start_date AND :end_date
-    -- ORDER BY mobi.start_of_week, mobi.state_code
+    ORDER BY mobi.start_of_week, mobi.state_code
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -243,7 +243,7 @@ def query2():
     WHERE
         MonthlyGoogleSearchesPerState.state_code = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
         AND MonthlyGoogleSearchesPerState.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
-    -- ORDER BY MonthlyGoogleSearchesPerState.start_of_month, MonthlyGoogleSearchesPerState.state_code
+    ORDER BY MonthlyGoogleSearchesPerState.start_of_month, MonthlyGoogleSearchesPerState.state_code
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -364,7 +364,7 @@ def query3():
         PercentOfCompaniesInProfitPerSectorPerMonth stockTab 
         JOIN PerMonthTestingInfoWholeUS testingTab ON stockTab.start_of_month = testingTab.start_of_month
     WHERE sector IN {}
-    --ORDER BY stockTab.start_of_month, sector
+    ORDER BY stockTab.start_of_month, sector
     """.format(sectors_tuple)
 
     # print(query)
@@ -527,7 +527,7 @@ def query4():
     WHERE physician_category in {}
     GROUP BY
         start_of_month, physician_category
-    ORDER BY physician_category, start_of_month
+    ORDER BY start_of_month, physician_category
     """.format(physician_tuple)
 
     cursor.execute(query, start_date=start_date, end_date=end_date)
@@ -636,7 +636,7 @@ def query5():
         NoOfStatesInEachStringencyCategoryPerParty strinCat
     JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = strinCat.start_of_month AND mor.ruling_party = strinCat.ruling_party
     WHERE mor.start_of_month BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
-    --ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
+    ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
     """
 
     cursor.execute(query, start_date=start_date, end_date=end_date, party=party)
