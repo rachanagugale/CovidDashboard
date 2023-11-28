@@ -178,19 +178,28 @@ export default function Query2() {
               <div style={{ width: "100%", textAlign: "left" }}>
                 <h2 style={{ marginBottom: "10px" }}>Query 2</h2>
                 <p className="text-sm text-muted-foreground mb-12">
-                  Helps in understanding of the dynamics surrounding vaccination
-                  efforts. Monitoring "general_vaccine_interest" helps gauge
-                  overall public awareness, while "vaccination_intent_interest"
-                  indicates the population's willingness to get vaccinated.
-                  Simultaneously, tracking "safety_side_effects_interest"
-                  assists in addressing concerns related to vaccine safety. By
-                  correlating these trends with vaccination rates, policymakers
-                  can tailor communication strategies, targeting areas with low
-                  intent or high safety concerns. The data also enables rapid
-                  response to emerging issues, supports predictive modeling, and
-                  allows for informed allocation of resources, ultimately aiding
-                  in fostering vaccination uptake and addressing hesitancy
-                  effectively.
+                  Query to understand people's interest in vaccination-related
+                  information and its relationship with the vaccination rate.
+                  Searches about vaccination-related info are divided into 3
+                  types:
+                  <ul>
+                    <li>
+                      <strong>1. SNI Covid19 Vaccination - </strong> The scaled
+                      normalized interest related to all COVID-19 vaccinations
+                      topics for the region and date.
+                    </li>
+                    <li>
+                      <strong>2. SNI Safety Side Effects - </strong> The scaled
+                      normalized interest related to safety and side effects of
+                      the vaccines for the region and date.
+                    </li>
+                    <li>
+                      <strong>3. SNI Vaccination Intent - </strong> The scaled
+                      normalized interest for all searches related to
+                      eligibility, availability, and accessibility for the
+                      region and date.
+                    </li>
+                  </ul>
                 </p>
               </div>
               <Notes />

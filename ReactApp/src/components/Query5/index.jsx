@@ -185,8 +185,8 @@ export default function Query5() {
               <div style={{ width: "100%", textAlign: "left" }}>
                 <h2 style={{ marginBottom: "10px" }}>Query 5</h2>
                 <p className="text-sm text-muted-foreground mb-12">
-                  Query to compare the mortality rate in democratic vs
-                  republican states based on their stringency index per month.
+                  Comparing the mortality rate in democratic vs republican
+                  states based on their stringency index per month.
                 </p>
               </div>
               <Notes />
