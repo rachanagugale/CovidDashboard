@@ -54,7 +54,7 @@ const options = {
       position: "left",
       title: {
         display: true,
-        text: "Infection Rate",
+        text: "Mobility",
       },
     },
     y1: {
@@ -63,7 +63,7 @@ const options = {
       position: "right",
       title: {
         display: true,
-        text: "Mobility",
+        text: "Infected Population Percentage",
       },
       grid: {
         drawOnChartArea: false,
@@ -167,7 +167,7 @@ export default function Query1() {
           <div style={{ width: "100%", textAlign: "left" }}>
             <div className="flex flex-row">
               <div style={{ width: "100%", textAlign: "left" }}>
-                <h2 style={{ marginBottom: "10px" }}>Query 1 Utility</h2>
+                <h2 style={{ marginBottom: "10px" }}>Query 1</h2>
                 <p className="text-sm text-muted-foreground mb-12">
                   Percentage of state population infected and how it affects
                   mobility across various sectors calculated for every week.

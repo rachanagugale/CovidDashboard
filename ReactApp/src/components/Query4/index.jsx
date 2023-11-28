@@ -91,7 +91,7 @@ export default function Query4() {
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
     from: new Date("01-JAN-2020"),
-    to: new Date("31-DEC-2020"),
+    to: new Date("31-DEC-2021"),
     physician_categories: [
       "Low (<200)",
       "Decent (200-300)",
@@ -132,12 +132,12 @@ export default function Query4() {
           <div style={{ width: "100%", textAlign: "left" }}>
             <div className="flex flex-row">
               <div style={{ width: "100%", textAlign: "left" }}>
-                <h2 style={{ marginBottom: "10px" }}>Query 4 Utility</h2>
+                <h2 style={{ marginBottom: "10px" }}>Query 4</h2>
                 <p className="text-sm text-muted-foreground mb-12">
-                  Ratio of number of deaths among hospitalized patients to the
-                  number of newly hospitalized patients for US states grouped
-                  into 4 categories according to the number of physicians per
-                  100000 people.
+                  Ratio of number of deaths for the month among hospitalized
+                  patients to the number of newly hospitalized patients for the
+                  month for US states grouped into 4 categories according to the
+                  number of physicians per 100000 people.
                 </p>
               </div>
               <Notes />

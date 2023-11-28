@@ -138,7 +138,7 @@ export default function Query2() {
   const [form, setForm] = useState({
     state: "Florida",
     from: new Date("11-FEB-21"),
-    to: new Date("11-DEC-21"),
+    to: new Date("11-DEC-22"),
   });
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function Query2() {
           <div style={{ width: "100%", textAlign: "left" }}>
             <div className="flex flex-row">
               <div style={{ width: "100%", textAlign: "left" }}>
-                <h2 style={{ marginBottom: "10px" }}>Query 2 Utility</h2>
+                <h2 style={{ marginBottom: "10px" }}>Query 2</h2>
                 <p className="text-sm text-muted-foreground mb-12">
                   Helps in understanding of the dynamics surrounding vaccination
                   efforts. Monitoring "general_vaccine_interest" helps gauge

@@ -196,10 +196,10 @@ def query2():
     SELECT
         MonthlyGoogleSearchesPerState.start_of_month,
         cts.state_name,
-        MonthlyGoogleSearchesPerState.avg_monthly_sni_covid19_vaccination,
-        MonthlyGoogleSearchesPerState.avg_monthly_sni_vaccination_intent,
-        MonthlyGoogleSearchesPerState.avg_monthly_sni_safety_side_effects,
-        MonthlyVacRatePerState.VaccinationRate
+        avg_monthly_sni_covid19_vaccination,
+        avg_monthly_sni_vaccination_intent,
+        avg_monthly_sni_safety_side_effects,
+        vaccination_rate
     FROM
         (
             SELECT
@@ -222,7 +222,7 @@ def query2():
                 MonthlyVacInfoPerState.state_code,
                 MonthlyVacInfoPerState.new_persons_vaccinated,
                 Demographics.population,
-                ROUND((MonthlyVacInfoPerState.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
+                ROUND((MonthlyVacInfoPerState.new_persons_vaccinated/Demographics.population), 8) as vaccination_rate
             FROM
                 (
                     SELECT
@@ -387,7 +387,7 @@ def query3():
 
     return jsonify(res_map)
 
-# Daily ratio of no. of deaths vs no. of newly hospitalized patients for states 
+# Monthly ratio of no. of deaths vs no. of newly hospitalized patients for states 
 # grouped into 4 categories according to no. of physicians per 100000 people.
 @app.route('/query4', methods=['POST'])
 def query4():
@@ -414,110 +414,121 @@ def query4():
     # 1. Filter and get the daily hospitalization data for US states from all the other hospitalization data.
     # 2. The data for NY is just placeholder data. Actual data for NY is split into counties. 
     # Subtract the NY data and add the aggregated county data to the hospitalization data to include data for NY.
-    # 3. For each state, get the number of deceased people for the day from epidemiology table by aggregating 
+    # 3. For each state, get the number of people hospitalized monthly by aggregating data from daily hospitalization info.
+    # 4. For each state, get the number of deceased people for the month from epidemiology table by aggregating 
     # new_deceased for all the counties of the state.
-    # 4. Calculate the ratio of deaths to hospitalized people for each state for each day.
-    # 5. Divide the states into 4 groups depending on the number of physicians.
-    # 6. Aggregate the ratio of deaths to hospitalized people for each group of states.
-    # 7. Filter by date and noOfPhysician categories.
+    # 5. Calculate the ratio of deaths to hospitalized people for each state for each month.
+    # 6. Divide the states into 4 groups depending on the number of physicians.
+    # 7. Aggregate the ratio of deaths to hospitalized people for each group of states.
+    # 8. Filter by date and noOfPhysician categories.
     query = """
-        WITH 
-        DailyHospitalizationInfoPerState AS (
-            (
-                SELECT 
-                    date_key,
-                    location_key as state_code,
-                    new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US___'
-            )
-            MINUS
-            -- Get rid of US_NY values as they are incomplete
-            (
-                SELECT 
-                    date_key,
-                    location_key,
-                    new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US_NY'
-            )
-            UNION
-            -- Sum up county data for NY
-            (
-                SELECT 
-                    date_key,
-                    SUBSTR(location_key, 1, 5) AS state_code,
-                    SUM(new_hospitalized_patients) AS new_hospitalized_patients
-                FROM
-                    "AMMAR.AMJAD".hospitalizations
-                WHERE
-                    location_key LIKE 'US_NY_%'
-                GROUP BY
-                    date_key,
-                    SUBSTR(location_key, 1, 5)
-            )
-        ),
-        DailyDeceasedPerState AS (
-            SELECT
-                date_key,
-                SUBSTR(location_key, 1, 5) AS state_code,
-                SUM(new_deceased) AS new_deceased
-            FROM
-                RGUGALE.us_epidemiology
-            WHERE 
-                location_key LIKE 'US____%' 
-            GROUP BY
-                date_key, SUBSTR(location_key, 1, 5)
-        ),
-        RatioOfDeathsToHospitalizedPeoplePerDayPerState AS (
-            SELECT
-                dailyHosp.date_key,
-                dailyHosp.state_code,
-                (new_deceased / NULLIF(new_hospitalized_patients, 0)) AS ratio_of_deaths
-            FROM
-                DailyHospitalizationInfoPerState dailyHosp
-            JOIN
-                DailyDeceasedPerState 
-            ON 
-                dailyHosp.date_key = DailyDeceasedPerState.date_key 
-                AND dailyHosp.state_code = DailyDeceasedPerState.state_code
-            WHERE 
-                dailyHosp.date_key BETWEEN :start_date AND :end_date
-        ),
-        StateCategoryByNoOfPhysicians AS (
+    WITH 
+    DailyHospitalizationInfoPerState AS (
+        (
             SELECT 
+                date_key,
                 location_key as state_code,
-                physicians_per_100000,
-                CASE
-                    WHEN physicians_per_100000 < 200 THEN 'Low (<200)'
-                    WHEN physicians_per_100000 >= 200 AND physicians_per_100000 < 300 THEN 'Decent (200-300)'
-                    WHEN physicians_per_100000 >= 300 AND physicians_per_100000 < 400 THEN 'Good (300-400)'
-                    WHEN physicians_per_100000 >= 400 THEN 'Very good (>400)'
-                    ELSE 'Unknown'
-                END AS physician_category
+                new_hospitalized_patients
             FROM
-                rgugale.health_stats
-            WHERE 
+                "AMMAR.AMJAD".hospitalizations
+            WHERE
                 location_key LIKE 'US___'
         )
+        MINUS
+        -- Get rid of US_NY values as they are incomplete
+        (
+            SELECT 
+                date_key,
+                location_key,
+                new_hospitalized_patients
+            FROM
+                "AMMAR.AMJAD".hospitalizations
+            WHERE
+                location_key LIKE 'US_NY'
+        )
+        UNION
+        -- Sum up county data for NY
+        (
+            SELECT 
+                date_key,
+                SUBSTR(location_key, 1, 5) AS state_code,
+                SUM(new_hospitalized_patients) AS new_hospitalized_patients
+            FROM
+                "AMMAR.AMJAD".hospitalizations
+            WHERE
+                location_key LIKE 'US_NY_%'
+            GROUP BY
+                date_key,
+                SUBSTR(location_key, 1, 5)
+        )
+    ),
+    MonthlyHospitalizationInfoPerState AS (
+        SELECT 
+            TRUNC(date_key, 'MM') as start_of_month,
+            state_code,
+            SUM(new_hospitalized_patients) as new_hospitalized_patients
+        FROM DailyHospitalizationInfoPerState
+        GROUP BY
+            TRUNC(date_key, 'MM'), state_code
+    ),
+    MonthlyDeceasedPerState AS (
+        SELECT
+            TRUNC(date_key, 'MM') as start_of_month,
+            SUBSTR(location_key, 1, 5) AS state_code,
+            SUM(new_deceased) AS new_deceased
+        FROM
+            RGUGALE.us_epidemiology
+        WHERE 
+            location_key LIKE 'US____%' 
+        GROUP BY
+            TRUNC(date_key, 'MM'), SUBSTR(location_key, 1, 5)
+    ),
+    RatioOfDeathsToHospitalizedPeoplePerMonthPerState AS (
+        SELECT
+            monthlyHosp.start_of_month,
+            monthlyHosp.state_code,
+            (new_deceased / NULLIF(new_hospitalized_patients, 0)) AS ratio_of_deaths
+        FROM
+            MonthlyHospitalizationInfoPerState monthlyHosp
+        JOIN
+            MonthlyDeceasedPerState 
+        ON 
+            monthlyHosp.start_of_month = MonthlyDeceasedPerState.start_of_month 
+            AND monthlyHosp.state_code = MonthlyDeceasedPerState.state_code
+        WHERE 
+            monthlyHosp.start_of_month BETWEEN :start_date AND :end_date
+    ),
+    StateCategoryByNoOfPhysicians AS (
+        SELECT 
+            location_key as state_code,
+            physicians_per_100000,
+            CASE
+                WHEN physicians_per_100000 < 200 THEN 'Low (<200)'
+                WHEN physicians_per_100000 >= 200 AND physicians_per_100000 < 300 THEN 'Decent (200-300)'
+                WHEN physicians_per_100000 >= 300 AND physicians_per_100000 < 400 THEN 'Good (300-400)'
+                WHEN physicians_per_100000 >= 400 THEN 'Very good (>400)'
+                ELSE 'Unknown'
+            END AS physician_category
+        FROM
+            rgugale.health_stats
+        WHERE 
+            location_key LIKE 'US___'
+    )
     SELECT 
-        deathsToHosp.date_key,
+        deathsToHosp.start_of_month,
         physician_category,
         GREATEST(NVL(ROUND(AVG(deathsToHosp.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
     FROM
-        RatioOfDeathsToHospitalizedPeoplePerDayPerState deathsToHosp
+        RatioOfDeathsToHospitalizedPeoplePerMonthPerState deathsToHosp
     JOIN
         StateCategoryByNoOfPhysicians phy ON deathsToHosp.state_code = phy.state_code
     JOIN
         rgugale.code_to_state ON  code_to_state.state_code = phy.state_code
     WHERE physician_category in {}
     GROUP BY
-        deathsToHosp.date_key, physician_category
-    -- ORDER BY physician_category, date_key""".format(physician_tuple)
+        start_of_month, physician_category
+    ORDER BY physician_category, start_of_month
+    """.format(physician_tuple)
 
     cursor.execute(query, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()

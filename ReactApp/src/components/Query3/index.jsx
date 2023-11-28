@@ -217,7 +217,7 @@ export default function Query3() {
           <div style={{ width: "100%", textAlign: "left" }}>
             <div className="flex flex-row">
               <div style={{ width: "100%", textAlign: "left" }}>
-                <h2 style={{ marginBottom: "10px" }}>Query 3 Utility</h2>
+                <h2 style={{ marginBottom: "10px" }}>Query 3</h2>
                 <p className="text-sm text-muted-foreground mb-12">
                   This query shows the number of people tested per 100000 for
                   the entire US vs the percentage of companies from a sector
