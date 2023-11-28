@@ -73,3 +73,7 @@ export const getQuery5 = (party, start_date, end_date) => {
     party,
   });
 };
+
+export const count = () => {
+  return api.get("/row_count");
+};
