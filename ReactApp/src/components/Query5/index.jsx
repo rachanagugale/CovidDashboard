@@ -17,6 +17,7 @@ import _ from "lodash";
 
 import Loading from "@/components/Loading";
 import Options from "./Options";
+import Notes from "./Notes";
 import { getQuery5 } from "../../helpers/api";
 import "./Query5.css";
 
@@ -180,11 +181,17 @@ export default function Query5() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 5 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-12">
-              Query to compare the mortality rate in democratic vs republican
-              states based on their stringency index per week
-            </p>
+            <div className="flex flex-row">
+              <div style={{ width: "100%", textAlign: "left" }}>
+                <h2 style={{ marginBottom: "10px" }}>Query 5 Utility</h2>
+                <p className="text-sm text-muted-foreground mb-12">
+                  Query to compare the mortality rate in democratic vs
+                  republican states based on their stringency index per week
+                </p>
+              </div>
+              <Notes />
+            </div>
+
             <Chart type="bar" options={options} data={data} />
           </div>
         )}

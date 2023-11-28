@@ -16,6 +16,7 @@ import _ from "lodash";
 
 import Loading from "@/components/Loading";
 import Options from "./Options";
+import Notes from "./Notes";
 import { getQuery2 } from "../../helpers/api";
 import "./Query2.css";
 
@@ -73,6 +74,8 @@ const options = {
   },
 };
 
+const colors = ["#797ef6", "#4adede", "#1aa7ec", "#faa247"];
+
 const formatData = (data) => {
   const dates = _.map(data, ({ date }) => new Date(date).toDateString());
   const [
@@ -107,16 +110,20 @@ const formatData = (data) => {
 
   return {
     labels: dates,
-    datasets: _.map(datasets, ([label, data]) => ({
+    datasets: _.map(datasets, ([label, data], index) => ({
       label,
       data,
       borderWidth: 2,
       pointRadius: 0,
       yAxisID: "y",
+      borderColor: colors[index],
+      backgroundColor: colors[index],
     })).concat([
       {
         label: "Vaccination Rate",
         data: vaccination_rate,
+        borderColor: colors[3],
+        backgroundColor: colors[3],
         borderWidth: 2,
         pointRadius: 0,
         yAxisID: "y1",
@@ -167,21 +174,27 @@ export default function Query2() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 2 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-12">
-              Helps in understanding of the dynamics surrounding vaccination
-              efforts. Monitoring "general_vaccine_interest" helps gauge overall
-              public awareness, while "vaccination_intent_interest" indicates
-              the population's willingness to get vaccinated. Simultaneously,
-              tracking "safety_side_effects_interest" assists in addressing
-              concerns related to vaccine safety. By correlating these trends
-              with vaccination rates, policymakers can tailor communication
-              strategies, targeting areas with low intent or high safety
-              concerns. The data also enables rapid response to emerging issues,
-              supports predictive modeling, and allows for informed allocation
-              of resources, ultimately aiding in fostering vaccination uptake
-              and addressing hesitancy effectively.
-            </p>
+            <div className="flex flex-row">
+              <div style={{ width: "100%", textAlign: "left" }}>
+                <h2 style={{ marginBottom: "10px" }}>Query 2 Utility</h2>
+                <p className="text-sm text-muted-foreground mb-12">
+                  Helps in understanding of the dynamics surrounding vaccination
+                  efforts. Monitoring "general_vaccine_interest" helps gauge
+                  overall public awareness, while "vaccination_intent_interest"
+                  indicates the population's willingness to get vaccinated.
+                  Simultaneously, tracking "safety_side_effects_interest"
+                  assists in addressing concerns related to vaccine safety. By
+                  correlating these trends with vaccination rates, policymakers
+                  can tailor communication strategies, targeting areas with low
+                  intent or high safety concerns. The data also enables rapid
+                  response to emerging issues, supports predictive modeling, and
+                  allows for informed allocation of resources, ultimately aiding
+                  in fostering vaccination uptake and addressing hesitancy
+                  effectively.
+                </p>
+              </div>
+              <Notes />
+            </div>
             <Line options={options} data={data} />
           </div>
         )}

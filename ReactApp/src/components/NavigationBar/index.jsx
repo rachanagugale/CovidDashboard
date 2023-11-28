@@ -6,6 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetFooter,
 } from "@/components/ui/sheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
@@ -56,13 +57,9 @@ export default function NavigationBar({ routes }) {
             </SheetDescription>
           </SheetHeader>
 
-          <button className="my-10" onClick={() => setSegment(segment + 1)}>
-            Refresh Count
-          </button>
-
           {loading && <Loading />}
           {!loading && (
-            <Alert>
+            <Alert className="my-10">
               <AlertDescription>
                 <div className="flex flex-row justify-between">
                   <label>Tables</label>
@@ -83,6 +80,14 @@ export default function NavigationBar({ routes }) {
               </AlertDescription>
             </Alert>
           )}
+          <SheetFooter>
+            <button
+              className="my-10 refresh-count-button"
+              onClick={() => setSegment(segment + 1)}
+            >
+              Refresh Count
+            </button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
     </nav>

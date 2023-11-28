@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import _ from "lodash";
 
 import Loading from "@/components/Loading";
+import Notes from "./Notes";
 import Options from "./Options";
 import { getQuery1 } from "../../helpers/api";
 import "./Query1.css";
@@ -127,8 +128,8 @@ export default function Query1() {
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
     state: "Florida",
-    from: new Date("12-FEB-21"),
-    to: new Date("11-MAR-21"),
+    from: new Date("01-JAN-21"),
+    to: new Date("01-JAN-23"),
   });
 
   useEffect(() => {
@@ -164,11 +165,16 @@ export default function Query1() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 1 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-12">
-              Percentage of state population infected and how it affects
-              mobility across various sectors calculated for every week.
-            </p>
+            <div className="flex flex-row">
+              <div style={{ width: "100%", textAlign: "left" }}>
+                <h2 style={{ marginBottom: "10px" }}>Query 1 Utility</h2>
+                <p className="text-sm text-muted-foreground mb-12">
+                  Percentage of state population infected and how it affects
+                  mobility across various sectors calculated for every week.
+                </p>
+              </div>
+              <Notes />
+            </div>
             <Line options={options} data={data} />
           </div>
         )}

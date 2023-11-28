@@ -16,6 +16,7 @@ import _ from "lodash";
 
 import Loading from "@/components/Loading";
 import Options from "./Options";
+import Notes from "./Notes";
 import { getQuery3 } from "../../helpers/api";
 import "./Query3.css";
 
@@ -53,7 +54,7 @@ const options = {
       position: "left",
       title: {
         display: true,
-        text: "Infection Rate",
+        text: "Percentage of companies in profit",
       },
     },
     y1: {
@@ -62,7 +63,7 @@ const options = {
       position: "right",
       title: {
         display: true,
-        text: "Mobility",
+        text: "Number of tested people per 100000 people",
       },
       grid: {
         drawOnChartArea: false,
@@ -161,6 +162,7 @@ const formatData = (data) => {
       pointRadius: 0,
       borderColor: colors[index],
       backgroundColor: colors[index],
+      hidden: label != "Health Care",
     })).concat([
       {
         label: "Number of tested people per 100000 people",
@@ -180,7 +182,7 @@ export default function Query3() {
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
     from: new Date("01-JAN-2020"),
-    to: new Date("31-JAN-2020"),
+    to: new Date("01-JUN-2020"),
   });
 
   useEffect(() => {
@@ -213,12 +215,18 @@ export default function Query3() {
         {isLoading && <Loading />}
         {!isLoading && (
           <div style={{ width: "100%", textAlign: "left" }}>
-            <h2 style={{ marginBottom: "10px" }}>Query 3 Utility</h2>
-            <p className="text-sm text-muted-foreground mb-12">
-              This query shows the number of people tested per 100000 for the
-              entire US vs the percentage of companies from a sector whose
-              stocks made a profit for the day.
-            </p>
+            <div className="flex flex-row">
+              <div style={{ width: "100%", textAlign: "left" }}>
+                <h2 style={{ marginBottom: "10px" }}>Query 3 Utility</h2>
+                <p className="text-sm text-muted-foreground mb-12">
+                  This query shows the number of people tested per 100000 for
+                  the entire US vs the percentage of companies from a sector
+                  whose stocks made a profit for the day.
+                </p>
+              </div>
+              <Notes />
+            </div>
+
             <Line options={options} data={data} />
           </div>
         )}

@@ -1,0 +1,12 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: calc(100vh - 65px);
+  width: 100%;
+}
+
+.home h2 {
+  font-size: 40px;
+}
