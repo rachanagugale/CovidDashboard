@@ -204,7 +204,7 @@ def query2():
         (
             SELECT
                 TRUNC(date_key, 'MM') AS start_of_month,
-                SUBSTR(location_key, 1, 5) AS location_key,
+                SUBSTR(location_key, 1, 5) AS state_code,
                 ROUND(AVG(sni_covid19_vaccination), 4) as avg_monthly_sni_covid19_vaccination,
                 ROUND(AVG(sni_vaccination_intent), 4) as avg_monthly_sni_vaccination_intent,
                 ROUND(AVG(sni_safety_side_effects), 4) as avg_monthly_sni_safety_side_effects
@@ -219,7 +219,7 @@ def query2():
         (
             SELECT
                 MonthlyVacInfoPerState.start_of_month,
-                MonthlyVacInfoPerState.location_key,
+                MonthlyVacInfoPerState.state_code,
                 MonthlyVacInfoPerState.new_persons_vaccinated,
                 Demographics.population,
                 ROUND((MonthlyVacInfoPerState.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
@@ -227,7 +227,7 @@ def query2():
                 (
                     SELECT
                         TRUNC(date_key, 'MM') AS start_of_month,
-                        location_key,
+                        location_key as state_code,
                         ROUND(SUM(new_persons_vaccinated), 4) AS new_persons_vaccinated
                     FROM
                         "AMMAR.AMJAD".us_vaccinations
@@ -235,15 +235,15 @@ def query2():
                         TRUNC(date_key, 'MM'), location_key -- Aggregation on date. No aggregation on county data as suitable county data is not available. Directly used the state data.
                 ) MonthlyVacInfoPerState
             JOIN
-                RGUGALE.Demographics ON MonthlyVacInfoPerState.location_key = Demographics.location_key
+                RGUGALE.Demographics ON MonthlyVacInfoPerState.state_code = Demographics.location_key
         ) MonthlyVacRatePerState
     ON MonthlyGoogleSearchesPerState.start_of_month = MonthlyVacRatePerState.start_of_month
-        AND MonthlyGoogleSearchesPerState.location_key = MonthlyVacRatePerState.location_key
-    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = MonthlyGoogleSearchesPerState.location_key
+        AND MonthlyGoogleSearchesPerState.state_code = MonthlyVacRatePerState.state_code
+    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = MonthlyGoogleSearchesPerState.state_code
     WHERE
-        MonthlyGoogleSearchesPerState.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
+        MonthlyGoogleSearchesPerState.state_code = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
         AND MonthlyGoogleSearchesPerState.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
-    -- ORDER BY MonthlyGoogleSearchesPerState.start_of_month, MonthlyGoogleSearchesPerState.location_key
+    -- ORDER BY MonthlyGoogleSearchesPerState.start_of_month, MonthlyGoogleSearchesPerState.state_code
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -422,11 +422,11 @@ def query4():
     # 7. Filter by date and noOfPhysician categories.
     query = """
         WITH 
-        HospitalizationsForStates AS (
+        DailyHospitalizationInfoPerState AS (
             (
                 SELECT 
                     date_key,
-                    location_key,
+                    location_key as state_code,
                     new_hospitalized_patients
                 FROM
                     "AMMAR.AMJAD".hospitalizations
@@ -450,7 +450,7 @@ def query4():
             (
                 SELECT 
                     date_key,
-                    SUBSTR(location_key, 1, 5) AS location_key,
+                    SUBSTR(location_key, 1, 5) AS state_code,
                     SUM(new_hospitalized_patients) AS new_hospitalized_patients
                 FROM
                     "AMMAR.AMJAD".hospitalizations
@@ -461,10 +461,10 @@ def query4():
                     SUBSTR(location_key, 1, 5)
             )
         ),
-        EpidemiologyForStates AS (
+        DailyDeceasedPerState AS (
             SELECT
                 date_key,
-                SUBSTR(location_key, 1, 5) AS location_key,
+                SUBSTR(location_key, 1, 5) AS state_code,
                 SUM(new_deceased) AS new_deceased
             FROM
                 RGUGALE.us_epidemiology
@@ -473,24 +473,24 @@ def query4():
             GROUP BY
                 date_key, SUBSTR(location_key, 1, 5)
         ),
-        RatioOfDeathsToHospitalizedPeople AS (
+        RatioOfDeathsToHospitalizedPeoplePerDayPerState AS (
             SELECT
-                HospitalizationsForStates.date_key,
-                HospitalizationsForStates.location_key,
+                dailyHosp.date_key,
+                dailyHosp.state_code,
                 (new_deceased / NULLIF(new_hospitalized_patients, 0)) AS ratio_of_deaths
             FROM
-                HospitalizationsForStates 
+                DailyHospitalizationInfoPerState dailyHosp
             JOIN
-                EpidemiologyForStates 
+                DailyDeceasedPerState 
             ON 
-                HospitalizationsForStates.date_key = EpidemiologyForStates.date_key 
-                AND HospitalizationsForStates.location_key = EpidemiologyForStates.location_key
+                dailyHosp.date_key = DailyDeceasedPerState.date_key 
+                AND dailyHosp.state_code = DailyDeceasedPerState.state_code
             WHERE 
-                HospitalizationsForStates.date_key BETWEEN :start_date AND :end_date
+                dailyHosp.date_key BETWEEN :start_date AND :end_date
         ),
-        StateAndPhysicians AS (
+        StateCategoryByNoOfPhysicians AS (
             SELECT 
-                location_key,
+                location_key as state_code,
                 physicians_per_100000,
                 CASE
                     WHEN physicians_per_100000 < 200 THEN 'Low (<200)'
@@ -505,18 +505,18 @@ def query4():
                 location_key LIKE 'US___'
         )
     SELECT 
-        RatioOfDeathsToHospitalizedPeople.date_key,
+        deathsToHosp.date_key,
         physician_category,
-        GREATEST(NVL(ROUND(AVG(RatioOfDeathsToHospitalizedPeople.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
+        GREATEST(NVL(ROUND(AVG(deathsToHosp.ratio_of_deaths), 8), 0), 0) AS AvgRatioOfDeathsToHospitalizedPeople
     FROM
-        RatioOfDeathsToHospitalizedPeople
+        RatioOfDeathsToHospitalizedPeoplePerDayPerState deathsToHosp
     JOIN
-        StateAndPhysicians ON RatioOfDeathsToHospitalizedPeople.location_key = StateAndPhysicians.location_key
+        StateCategoryByNoOfPhysicians phy ON deathsToHosp.state_code = phy.state_code
     JOIN
-        rgugale.code_to_state ON  code_to_state.state_code = StateAndPhysicians.location_key
+        rgugale.code_to_state ON  code_to_state.state_code = phy.state_code
     WHERE physician_category in {}
     GROUP BY
-        RatioOfDeathsToHospitalizedPeople.date_key, physician_category
+        deathsToHosp.date_key, physician_category
     -- ORDER BY physician_category, date_key""".format(physician_tuple)
 
     cursor.execute(query, start_date=start_date, end_date=end_date)
@@ -562,19 +562,19 @@ def query5():
     # 6. Join the stringency and mortality information.
     # 7. Filter by date and the ruling party.
     query = """
-    WITH MonthlyStringency AS (
+    WITH MonthlyStringencyPerState AS (
         SELECT 
             TRUNC(date_key, 'MM') AS start_of_month,
-            location_key,
+            location_key AS state_code,
             ROUND(AVG(stringency_index), 4) AS monthly_avg_stringency_index 
         FROM "AMMAR.AMJAD".government_responses 
         WHERE location_key LIKE 'US___'
         GROUP BY TRUNC(date_key, 'MM'), location_key
     ),
-    MonthlyStringencyWithCategory AS (
+    MonthlyStringencyPerStateWithCategory AS (
         SELECT
             start_of_month,
-            location_key,
+            state_code,
             monthly_avg_stringency_index,
             CASE
                 WHEN monthly_avg_stringency_index < 20 THEN '0-19'
@@ -584,22 +584,22 @@ def query5():
                 WHEN monthly_avg_stringency_index >= 80 AND monthly_avg_stringency_index < 100 THEN '80-100'
                 ELSE 'Unknown'
             END AS stringency_category
-        FROM MonthlyStringency
+        FROM MonthlyStringencyPerState
     ),
     NoOfStatesInEachStringencyCategoryPerParty AS (
         SELECT 
             start_of_month, 
             ruling_party, 
             stringency_category,
-            COUNT(MonthlyStringencyWithCategory.location_key) AS noOfStates
-        FROM MonthlyStringencyWithCategory
-        JOIN rgugale.code_to_state ON code_to_state.state_code = MonthlyStringencyWithCategory.location_key
+            COUNT(monStrin.state_code) AS noOfStatesInCategory
+        FROM MonthlyStringencyPerStateWithCategory monStrin
+        JOIN rgugale.code_to_state ON code_to_state.state_code = monStrin.state_code
         GROUP BY start_of_month, ruling_party, stringency_category
     ),
     MonthlyDeceasedPerState AS (
         SELECT 
             TRUNC(date_key, 'MM') AS start_of_month,
-            location_key,
+            location_key AS state_code,
             SUM(new_deceased) AS monthly_avg_deceased
         FROM rgugale.US_Epidemiology
         WHERE location_key LIKE 'US___'
@@ -612,18 +612,18 @@ def query5():
             AVG(GREATEST(ROUND(monthly_avg_deceased * 100000 / population, 8), 0)) AS mortality_rate_100000 --mortality rate for every 1000 people
         FROM
             MonthlyDeceasedPerState 
-            JOIN rgugale.Demographics ON MonthlyDeceasedPerState.location_key = Demographics.location_key
+            JOIN rgugale.Demographics ON MonthlyDeceasedPerState.state_code = Demographics.location_key
             JOIN rgugale.code_to_state ON code_to_state.state_code = Demographics.location_key
         GROUP BY start_of_month, ruling_party
     )
     SELECT
         mor.start_of_month,
         stringency_category,
-        noOfStates,
+        noOfStatesInCategory,
         ROUND(mortality_rate_100000, 8) AS mortality_rate_100000
     FROM
-        NoOfStatesInEachStringencyCategoryPerParty str_cat
-    JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = str_cat.start_of_month AND mor.ruling_party = str_cat.ruling_party
+        NoOfStatesInEachStringencyCategoryPerParty strinCat
+    JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = strinCat.start_of_month AND mor.ruling_party = strinCat.ruling_party
     WHERE mor.start_of_month BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
     --ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
     """
