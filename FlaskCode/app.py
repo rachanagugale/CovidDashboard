@@ -42,10 +42,10 @@ def query1():
     # 7. Join with code_to_state table to get the state_name.
     # 8. Filter by date and state_name.
     query = """WITH 
-    AggregatedCountyData AS (
+    DailyNewConfirmedPerState AS (
         SELECT 
             date_key,
-            SUBSTR(location_key, 1, 5) AS location_key,
+            SUBSTR(location_key, 1, 5) AS state_code,
             NVL(SUM(new_confirmed), 0) AS new_confirmed
         FROM
             rgugale.US_Epidemiology
@@ -54,38 +54,38 @@ def query1():
         GROUP BY
             date_key, SUBSTR(location_key, 1, 5)
     ),
-    CurrentlyInfectedCountPerState AS (
+    DailyCurrentlyInfectedCountPerState AS (
         SELECT
             date_key,
-            location_key,
-            SUM(new_confirmed) OVER (PARTITION BY location_key ORDER BY date_key ROWS BETWEEN 13 PRECEDING AND CURRENT ROW) AS CurrentlyInfectedCount
+            state_code,
+            SUM(new_confirmed) OVER (PARTITION BY state_code ORDER BY date_key ROWS BETWEEN 13 PRECEDING AND CURRENT ROW) AS CurrentlyInfectedCount
         FROM
-            AggregatedCountyData
+            DailyNewConfirmedPerState
     ),
     CurrentlyInfectedCountPerStatePerWeek AS (
         SELECT 
             date_key AS start_of_week,
-            location_key,
+            state_code,
             CurrentlyInfectedCount
         FROM
-            CurrentlyInfectedCountPerState
+            DailyCurrentlyInfectedCountPerState
         WHERE
             date_key = TRUNC(date_key, 'IW')
     ),
     InfectionRatePerStatePerWeek AS (
         SELECT 
-            cicpspw.location_key, 
+            cicpspw.state_code, 
             cicpspw.start_of_week,
             ROUND((CurrentlyInfectedCount/population)*100, 8) AS InfectionRatePerWeek 
         FROM
             CurrentlyInfectedCountPerStatePerWeek cicpspw
         JOIN
-            rgugale.demographics demo ON cicpspw.location_key = demo.location_key
+            rgugale.demographics demo ON cicpspw.state_code = demo.location_key
     ),
-    WeeklyUSMobility AS (
+    WeeklyMobilityInfoPerState AS (
         SELECT
             TRUNC(date_key, 'IW') AS start_of_week,
-            SUBSTR(location_key, 1, 5) AS location_key,
+            SUBSTR(location_key, 1, 5) AS state_code,
             ROUND(AVG(mobility_retail_and_recreation), 4) AS AvgMobilityRetailAndRecreation,
             ROUND(AVG(mobility_grocery_and_pharmacy), 4) AS AvgMobilityGroceryAndPharmacy,
             ROUND(AVG(mobility_parks), 4) AS AvgMobilityParks,
@@ -103,7 +103,7 @@ def query1():
     SELECT
         mobi.start_of_week,
         cts.state_name,
-        InfectionRatePerStatePerWeek.InfectionRatePerWeek,
+        irpspw.InfectionRatePerWeek,
         AvgMobilityRetailAndRecreation,
         AvgMobilityGroceryAndPharmacy,
         AvgMobilityParks,
@@ -111,19 +111,18 @@ def query1():
         AvgMobilityWorkplaces,
         AvgMobilityResidential
     FROM
-        InfectionRatePerStatePerWeek
+        InfectionRatePerStatePerWeek irpspw
     JOIN
-        WeeklyUSMobility mobi 
-        ON InfectionRatePerStatePerWeek.location_key = mobi.location_key 
-            AND InfectionRatePerStatePerWeek.start_of_week = mobi.start_of_week
+        WeeklyMobilityInfoPerState mobi 
+        ON irpspw.state_code = mobi.state_code 
+            AND irpspw.start_of_week = mobi.start_of_week
     JOIN
         RGUGALE.CODE_TO_STATE cts 
-        ON cts.state_code = InfectionRatePerStatePerWeek.location_key
+        ON cts.state_code = irpspw.state_code
     WHERE
-        InfectionRatePerStatePerWeek.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state) 
+        irpspw.state_code = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state) 
         AND mobi.start_of_week BETWEEN :start_date AND :end_date
-    ORDER BY
-        mobi.start_of_week, mobi.location_key
+    -- ORDER BY mobi.start_of_week, mobi.state_code
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -195,12 +194,12 @@ def query2():
     # 6. Filter by date and state_name.
     query = """
     SELECT
-        MonthlyGoogleSearches.start_of_month,
+        MonthlyGoogleSearchesPerState.start_of_month,
         cts.state_name,
-        MonthlyGoogleSearches.avg_monthly_sni_covid19_vaccination,
-        MonthlyGoogleSearches.avg_monthly_sni_vaccination_intent,
-        MonthlyGoogleSearches.avg_monthly_sni_safety_side_effects,
-        MonthlyVacRate.VaccinationRate
+        MonthlyGoogleSearchesPerState.avg_monthly_sni_covid19_vaccination,
+        MonthlyGoogleSearchesPerState.avg_monthly_sni_vaccination_intent,
+        MonthlyGoogleSearchesPerState.avg_monthly_sni_safety_side_effects,
+        MonthlyVacRatePerState.VaccinationRate
     FROM
         (
             SELECT
@@ -215,40 +214,36 @@ def query2():
                 location_key LIKE 'US____%' 
             GROUP BY
                 TRUNC(date_key, 'MM'), SUBSTR(location_key, 1, 5) --Aggregating county data for each state for each month
-        ) MonthlyGoogleSearches
+        ) MonthlyGoogleSearchesPerState
     JOIN
         (
             SELECT
-                VacInfo.start_of_month,
-                VacInfo.location_key,
-                VacInfo.new_persons_vaccinated,
+                MonthlyVacInfoPerState.start_of_month,
+                MonthlyVacInfoPerState.location_key,
+                MonthlyVacInfoPerState.new_persons_vaccinated,
                 Demographics.population,
-                ROUND((VacInfo.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
+                ROUND((MonthlyVacInfoPerState.new_persons_vaccinated/Demographics.population), 8) as VaccinationRate
             FROM
                 (
                     SELECT
                         TRUNC(date_key, 'MM') AS start_of_month,
                         location_key,
-                        ROUND(AVG(new_persons_vaccinated), 4) AS new_persons_vaccinated,
-                        ROUND(AVG(cumulative_persons_vaccinated), 4) AS cumulative_persons_vaccinated,
-                        ROUND(AVG(new_persons_fully_vaccinated), 4) AS new_persons_fully_vaccinated,
-                        ROUND(AVG(cumulative_persons_fully_vaccinated), 4) AS cumulative_persons_fully_vaccinated
+                        ROUND(SUM(new_persons_vaccinated), 4) AS new_persons_vaccinated
                     FROM
                         "AMMAR.AMJAD".us_vaccinations
                     GROUP BY
                         TRUNC(date_key, 'MM'), location_key -- Aggregation on date. No aggregation on county data as suitable county data is not available. Directly used the state data.
-                ) VacInfo
+                ) MonthlyVacInfoPerState
             JOIN
-                "RGUGALE".Demographics ON VacInfo.location_key = Demographics.location_key
-        ) MonthlyVacRate
-    ON MonthlyGoogleSearches.start_of_month = MonthlyVacRate.start_of_month
-        AND MonthlyGoogleSearches.location_key = MonthlyVacRate.location_key
-    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = MonthlyGoogleSearches.location_key
+                RGUGALE.Demographics ON MonthlyVacInfoPerState.location_key = Demographics.location_key
+        ) MonthlyVacRatePerState
+    ON MonthlyGoogleSearchesPerState.start_of_month = MonthlyVacRatePerState.start_of_month
+        AND MonthlyGoogleSearchesPerState.location_key = MonthlyVacRatePerState.location_key
+    JOIN RGUGALE.CODE_TO_STATE cts ON cts.state_code = MonthlyGoogleSearchesPerState.location_key
     WHERE
-        MonthlyGoogleSearches.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
-        AND MonthlyGoogleSearches.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
-    ORDER BY
-        MonthlyGoogleSearches.start_of_month, MonthlyGoogleSearches.location_key
+        MonthlyGoogleSearchesPerState.location_key = (SELECT state_code FROM RGUGALE.CODE_TO_STATE WHERE state_name = :input_state)
+        AND MonthlyGoogleSearchesPerState.start_of_month BETWEEN TO_DATE(:start_date, 'DD-MON-YY') AND TO_DATE(:end_date, 'DD-MON-YY')
+    -- ORDER BY MonthlyGoogleSearchesPerState.start_of_month, MonthlyGoogleSearchesPerState.location_key
     """
 
     cursor.execute(query, input_state=input_state, start_date=start_date, end_date=end_date)
@@ -275,7 +270,7 @@ def query2():
 
 
 # This query shows the number of people tested per 100000 for the entire US vs 
-# the percentage of companies from a sector whose stocks made a profit for the day.
+# the average percentage of companies from a sector whose stocks made a profit for the month.
 @app.route('/query3', methods=['POST'])
 def query3():
     data = request.json
@@ -294,48 +289,56 @@ def query3():
     print("Request for q3 received")
 
     # This query works as follows:
-    # 1. Get daily profit percentage of the stock using ((close-open)/open)*100. Also get the sector 
-    # information of the stock by joining the snp500 table with snp500_company_info table. Create a new column denoting
-    # if the company was in profit or loss for the day based on the daily profit percentage.
-    # 2. Get the count of number of companies from each sector that are in profit and in loss for the day.
-    # 3. Calculate the percentage of companies from the sector that are in profit for the day.
-    # 4. Get aggregated data about the number of people tested per 100000 people for the day in the entire US.
-    # 5. Join the companies in profit data with the testing data.
-    # 6. Filter by date and sector.
-    query = """WITH PLCount AS (
+    # 1. Get the number of companies present in each sector.
+    # 2. Get the number of companies in profit on a day in each sector.
+    # 3. Aggregate the data to get the percentage of companies in profit per month in each sector.
+    # 4. Get the monthly testing rate per 100000 people for the entire US by aggregating daily data for each state.
+    # 5. Join the stock and testing tables
+    # 6. Filter by sector and date.
+    query = """
+    WITH NoOfCompaniesPerSector AS (
+        SELECT 
+            sector, 
+            COUNT(ticker) AS noOfCompaniesInSector 
+        FROM 
+            RGUGALE.snp500_company_info
+        GROUP BY 
+            sector
+    ),
+    DailyNoOfCompaniesInProfitPerSector AS (
         SELECT 
             date_key, 
             sector, 
-            p_or_l, 
-            COUNT(ticker) AS noOfCompanies
+            COUNT(ticker) AS noOfCompaniesInProfitInSector
         FROM (
             SELECT 
                 snp500.ticker,
                 date_key,
                 sector,
-                ROUND(((close - open) / open) * 100, 4) AS profit_percent,
-                CASE
-                    WHEN ROUND(((close - open) / open) * 100, 4) < 0 THEN 'Loss'
-                    WHEN ROUND(((close - open) / open) * 100, 4) >= 0 THEN 'Profit'
-                END AS p_or_l
-            FROM "AMMAR.AMJAD".snp500 
-            JOIN rgugale.snp500_company_info ON snp500.ticker = snp500_company_info.ticker
+                ROUND(((close - open) / open) * 100, 4) AS profit_or_loss_percent
+            FROM 
+                "AMMAR.AMJAD".snp500 
+                JOIN rgugale.snp500_company_info ON snp500.ticker = snp500_company_info.ticker
+            WHERE 
+                ROUND(((close - open) / open) * 100, 4) >= 0
         ) StockPriceWithSector
-        GROUP BY date_key, sector, p_or_l
+        GROUP BY 
+            date_key, sector
     ),
-    PercentageOfCompaniesInProfit AS (
+    PercentOfCompaniesInProfitPerSectorPerMonth AS (
         SELECT 
-            date_key, 
-            sector, 
-            p_or_l,
-            noOfCompanies,
-            ROUND((noOfCompanies / (SUM(noOfCompanies) OVER (PARTITION BY date_key, sector))) * 100, 4) AS PercentOfCompaniesInProfit
+            TRUNC(date_key, 'MM') AS start_of_month,
+            dailyInfo.sector,
+            ROUND(AVG((noOfCompaniesInProfitInSector/noOfCompaniesInSector)*100), 4) AS percentOfCompaniesInProfit
         FROM
-            PLCount
+            DailyNoOfCompaniesInProfitPerSector dailyInfo 
+            JOIN NoOfCompaniesPerSector sectorCount ON dailyInfo.sector = sectorCount.sector
+        GROUP BY
+            TRUNC(date_key, 'MM'), dailyInfo.sector
     ),
-    TestingInfoAggregated AS (
+    PerMonthTestingInfoWholeUS AS (
         SELECT 
-            date_key, 
+            TRUNC(date_key, 'MM') AS start_of_month, 
             ROUND(AVG(no_of_tested_per_100000), 5) AS no_of_tested_per_100000 
         FROM 
             (
@@ -348,22 +351,23 @@ def query3():
                     JOIN rgugale.Demographics demo ON demo.location_key = US_Epidemiology.location_key
                 WHERE
                     US_Epidemiology.location_key LIKE 'US___' AND date_key BETWEEN :start_date AND :end_date
-            ) TestingInfo
-        GROUP BY date_key
+            ) PerDayTestingInfoWholeUS
+        GROUP BY 
+            TRUNC(date_key, 'MM')
     )
     SELECT 
-        PercentageOfCompaniesInProfit.date_key,
+        stockTab.start_of_month,
         no_of_tested_per_100000,
-        PercentOfCompaniesInProfit,
+        percentOfCompaniesInProfit,
         sector
     FROM 
-        PercentageOfCompaniesInProfit
-        JOIN TestingInfoAggregated ON TestingInfoAggregated.date_key = PercentageOfCompaniesInProfit.date_key
+        PercentOfCompaniesInProfitPerSectorPerMonth stockTab 
+        JOIN PerMonthTestingInfoWholeUS testingTab ON stockTab.start_of_month = testingTab.start_of_month
     WHERE sector IN {}
-    ORDER BY PercentageOfCompaniesInProfit.date_key, sector
+    --ORDER BY stockTab.start_of_month, sector
     """.format(sectors_tuple)
 
-    print(query)
+    # print(query)
 
     cursor.execute(query, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()
@@ -513,8 +517,7 @@ def query4():
     WHERE physician_category in {}
     GROUP BY
         RatioOfDeathsToHospitalizedPeople.date_key, physician_category
-    ORDER BY
-        physician_category, date_key""".format(physician_tuple)
+    -- ORDER BY physician_category, date_key""".format(physician_tuple)
 
     cursor.execute(query, start_date=start_date, end_date=end_date)
     result = cursor.fetchall()
@@ -622,7 +625,7 @@ def query5():
         NoOfStatesInEachStringencyCategoryPerParty str_cat
     JOIN MortalityRatePerMonthPerRulingParty mor ON mor.start_of_month = str_cat.start_of_month AND mor.ruling_party = str_cat.ruling_party
     WHERE mor.start_of_month BETWEEN :start_date AND :end_date AND mor.ruling_party=:party
-    ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
+    --ORDER BY mor.start_of_month, mor.ruling_party, stringency_category
     """
 
     cursor.execute(query, start_date=start_date, end_date=end_date, party=party)

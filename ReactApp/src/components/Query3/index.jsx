@@ -182,7 +182,7 @@ export default function Query3() {
   const [isLoading, setLoading] = useState(true);
   const [form, setForm] = useState({
     from: new Date("01-JAN-2020"),
-    to: new Date("01-JUN-2020"),
+    to: new Date("31-DEC-2021"),
   });
 
   useEffect(() => {
@@ -221,7 +221,7 @@ export default function Query3() {
                 <p className="text-sm text-muted-foreground mb-12">
                   This query shows the number of people tested per 100000 for
                   the entire US vs the percentage of companies from a sector
-                  whose stocks made a profit for the day.
+                  whose stocks made a profit for the month.
                 </p>
               </div>
               <Notes />
